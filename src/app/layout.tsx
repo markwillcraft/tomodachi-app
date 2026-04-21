@@ -4,11 +4,12 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
 import { cn } from "@/lib/utils";
 import { SiteHeader } from "@/components/site-header";
+import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
-  title: "Japanese Quiz",
+  title: "Tomodachi — Japanese study buddy",
   description:
-    "Import romaji, auto-fill kana and meaning with Gemini, and quiz yourself.",
+    "Study Japanese with vocab cards, N5 grammar lessons, and AI-powered quizzes.",
 };
 
 export default function RootLayout({
@@ -17,7 +18,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
@@ -31,18 +32,20 @@ export default function RootLayout({
         />
       </head>
       <body className={cn("min-h-screen antialiased")}>
-        <ClerkProvider
-          appearance={{
-            baseTheme: dark,
-            variables: {
-              colorPrimary: "hsl(217 91% 60%)",
-              borderRadius: "0.5rem",
-            },
-          }}
-        >
-          <SiteHeader />
-          <main className="mx-auto max-w-5xl px-6 py-10">{children}</main>
-        </ClerkProvider>
+        <ThemeProvider>
+          <ClerkProvider
+            appearance={{
+              baseTheme: dark,
+              variables: {
+                colorPrimary: "hsl(217 91% 60%)",
+                borderRadius: "0.5rem",
+              },
+            }}
+          >
+            <SiteHeader />
+            <main className="mx-auto max-w-5xl px-6 py-10">{children}</main>
+          </ClerkProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

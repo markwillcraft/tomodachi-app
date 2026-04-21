@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { getStreak } from "@/lib/streak";
+import { StreakWidget } from "@/components/streak-widget";
 import {
   Card,
   CardContent,
@@ -25,12 +27,15 @@ export default async function DashboardPage() {
 
   const user = await currentUser();
 
-  const wordCount = await prisma.word.count({ where: { userId } });
-  const recentAttempts = await prisma.quizAttempt.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    take: 10,
-  });
+  const [wordCount, recentAttempts, streak] = await Promise.all([
+    prisma.word.count({ where: { userId } }),
+    prisma.quizAttempt.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    }),
+    getStreak(userId),
+  ]);
   const totalAnswered = recentAttempts.reduce((s, a) => s + a.total, 0);
   const totalCorrect = recentAttempts.reduce((s, a) => s + a.correct, 0);
   const recentAccuracy =
@@ -54,6 +59,8 @@ export default async function DashboardPage() {
         </p>
       </section>
 
+      <StreakWidget {...streak} />
+
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard label="Words in your library" value={wordCount.toString()} />
         <StatCard
@@ -71,16 +78,16 @@ export default async function DashboardPage() {
 
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <ActionCard
+          href="/study"
+          title="Study"
+          desc="Vocab cards with audio + N5 grammar lessons in color."
+          icon={<BookOpen className="size-5" />}
+        />
+        <ActionCard
           href="/categories"
           title="N5 Categories"
           desc="Browse curated word lists by topic and add them to your vocab."
           icon={<Layers className="size-5" />}
-        />
-        <ActionCard
-          href="/import"
-          title="Import romaji"
-          desc="Paste or upload a .txt list. Auto-enriched with kana and meaning."
-          icon={<BookOpen className="size-5" />}
         />
         <ActionCard
           href="/quiz"

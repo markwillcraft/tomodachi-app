@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, Save, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,7 @@ type Word = {
   katakana: string;
   english: string;
   needsReview?: boolean;
+  batch?: { id: number; name: string; source: string } | null;
 };
 
 export default function ImportPage() {
@@ -54,6 +55,29 @@ export default function ImportPage() {
   useEffect(() => {
     loadWords();
   }, []);
+
+  // Group words by their batch so the library reads as "Import #1, Import #2,
+  // Greetings (N5)" etc. instead of one giant list. Words without a batch
+  // (created before the feature) fall into an "Uncategorized" bucket.
+  const grouped = useMemo(() => {
+    const map = new Map<string, { name: string; source: string; words: Word[] }>();
+    for (const w of words) {
+      const key = w.batch ? `b:${w.batch.id}` : "none";
+      const existing = map.get(key);
+      if (existing) {
+        existing.words.push(w);
+      } else {
+        map.set(key, {
+          name: w.batch?.name ?? "Uncategorized",
+          source: w.batch?.source ?? "",
+          words: [w],
+        });
+      }
+    }
+    // Latest batch (by name suffix or just insertion order from the API,
+    // which is createdAt desc) appears first.
+    return Array.from(map.entries()).map(([id, v]) => ({ id, ...v }));
+  }, [words]);
 
   async function handleImport() {
     setError(null);
@@ -111,7 +135,9 @@ export default function ImportPage() {
         <h1 className="text-3xl font-bold tracking-tight">Import romaji</h1>
         <p className="text-muted-foreground">
           One romaji per line, or comma-separated. Hiragana and katakana are
-          auto-generated. English meaning is fetched via Google Gemini.
+          auto-generated. English meaning is fetched via Google Gemini. Each
+          import becomes its own batch ("Import #1", "Import #2") so you can
+          study them separately later.
         </p>
       </section>
 
@@ -164,38 +190,60 @@ export default function ImportPage() {
           <h2 className="text-xl font-semibold">Your library</h2>
           <Badge variant="secondary">{words.length} words</Badge>
         </div>
+
         {loading ? (
           <p className="text-muted-foreground text-sm">Loading…</p>
-        ) : words.length === 0 ? (
+        ) : grouped.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center text-muted-foreground">
               No words yet. Import some to get started.
             </CardContent>
           </Card>
         ) : (
-          <Card>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Romaji</TableHead>
-                  <TableHead>Hiragana</TableHead>
-                  <TableHead>Katakana</TableHead>
-                  <TableHead>English</TableHead>
-                  <TableHead className="w-32 text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {words.map((w) => (
-                  <WordRow
-                    key={w.id}
-                    word={w}
-                    onSave={handleSave}
-                    onDelete={handleDelete}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
+          <div className="space-y-6">
+            {grouped.map((g) => (
+              <Card key={g.id}>
+                <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 pb-3">
+                  <div>
+                    <CardTitle className="text-base">{g.name}</CardTitle>
+                    <CardDescription>
+                      {g.source === "category"
+                        ? "From N5 categories"
+                        : g.source === "import"
+                          ? "Manual import"
+                          : "Older words (no batch)"}
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline">{g.words.length} words</Badge>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Romaji</TableHead>
+                        <TableHead>Hiragana</TableHead>
+                        <TableHead>Katakana</TableHead>
+                        <TableHead>English</TableHead>
+                        <TableHead className="w-32 text-right">
+                          Actions
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {g.words.map((w) => (
+                        <WordRow
+                          key={w.id}
+                          word={w}
+                          onSave={handleSave}
+                          onDelete={handleDelete}
+                        />
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         )}
       </section>
     </div>

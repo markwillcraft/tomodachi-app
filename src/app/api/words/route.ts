@@ -11,6 +11,7 @@ export async function GET() {
   const words = await prisma.word.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
+    include: { batch: { select: { id: true, name: true, source: true } } },
   });
   return NextResponse.json({ words });
 }

@@ -42,8 +42,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No words to add" }, { status: 400 });
   }
 
-  // Upsert each word into the user's library. Existing words get updated kana
-  // / english from the catalog (keeps them in sync if the catalog improves).
+  // Reuse the same per-category batch when the user incrementally adds
+  // words (e.g. one at a time from the table). That way the vocab page
+  // still shows a single "Greetings (N5)" group instead of fragmenting
+  // into one batch per click.
+  const batchName = `${category.name} (${category.level})`;
+  let batch = await prisma.importBatch.findFirst({
+    where: { userId, source: "category", name: batchName },
+  });
+  if (!batch) {
+    batch = await prisma.importBatch.create({
+      data: { userId, source: "category", name: batchName },
+    });
+  }
+
   const saved = await Promise.all(
     toAdd.map((w) =>
       prisma.word.upsert({
@@ -54,11 +66,13 @@ export async function POST(req: Request) {
           hiragana: w.hiragana,
           katakana: w.katakana,
           english: w.english,
+          batchId: batch!.id,
         },
         update: {
           hiragana: w.hiragana,
           katakana: w.katakana,
           english: w.english,
+          batchId: batch!.id,
         },
       }),
     ),
@@ -66,6 +80,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     added: saved.length,
+    batch: { id: batch.id, name: batch.name },
     words: saved,
   });
 }

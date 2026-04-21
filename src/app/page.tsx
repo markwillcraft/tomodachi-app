@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowRight, BookOpen, Clock, Layers, Sparkles } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  Clock,
+  Flame,
+  Layers,
+  Sparkles,
+  Volume2,
+} from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,13 +30,18 @@ export default async function LandingPage() {
   return (
     <div className="space-y-16">
       <section className="space-y-5 pt-8">
+        <div className="inline-flex items-center gap-2 rounded-full border bg-muted/40 px-3 py-1 text-xs font-medium text-muted-foreground">
+          <span className="size-1.5 rounded-full bg-emerald-400" />
+          Tomodachi · your Japanese study buddy
+        </div>
         <h1 className="text-5xl font-bold tracking-tight">
-          Build your own <span className="jp">日本語</span> quiz.
+          Make friends with <span className="jp">日本語</span>.
         </h1>
         <p className="text-muted-foreground text-lg max-w-2xl">
-          Sign in, drop a list of romaji, and get personalized multiple-choice
-          quizzes with hiragana, katakana, and English meanings auto-filled by
-          Gemini. Track accuracy, time-per-question, and weak spots over time.
+          Tomodachi (友だち, "friend") gives you flip-card vocab with native
+          pronunciation, color-coded N5 grammar, AI-powered quizzes, and a
+          daily streak that keeps you honest. Free, dark-mode-friendly, and
+          built around how you actually learn.
         </p>
         <div className="flex gap-3 pt-2">
           <Button asChild size="lg">
@@ -40,26 +53,36 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Feature
-          icon={<BookOpen className="size-5" />}
-          title="Your own vocab"
-          desc="Import romaji manually, by .txt upload, or pick from JLPT N5 categories."
-        />
-        <Feature
-          icon={<Layers className="size-5" />}
-          title="N5 categories"
-          desc="Browse curated lists like Greetings, Numbers, Family, Verbs and add to vocab."
-        />
-        <Feature
-          icon={<Clock className="size-5" />}
-          title="Per-question timing"
-          desc="See exactly which words slow you down so you can drill them harder."
+          icon={<Volume2 className="size-5" />}
+          title="Listen & flip"
+          desc="Tap a card to flip romaji → kana + meaning. Tap the speaker to hear native Japanese pronunciation."
         />
         <Feature
           icon={<Sparkles className="size-5" />}
+          title="N5 grammar, in color"
+          desc="Color-coded particles and copulas make Lesson 1-1 (N1 は N2 です) instantly readable."
+        />
+        <Feature
+          icon={<Flame className="size-5" />}
+          title="Daily streak"
+          desc="A day counts when you take a 50-question quiz AND view 50 cards. Real practice, not vanity."
+        />
+        <Feature
+          icon={<Layers className="size-5" />}
+          title="Categorized vocab"
+          desc="Every import becomes its own batch — Import #1, Import #2 — so you can study what you added when."
+        />
+        <Feature
+          icon={<BookOpen className="size-5" />}
+          title="N5 starter packs"
+          desc="Greetings, numbers, family, verbs and more. Add a category to vocab in one click."
+        />
+        <Feature
+          icon={<Clock className="size-5" />}
           title="AI study coach"
-          desc="Gemini reads your stats and suggests the next thing to practice."
+          desc="Gemini reads your stats and tells you which words are slowing you down."
         />
       </section>
     </div>

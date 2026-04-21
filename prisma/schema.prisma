@@ -20,10 +20,34 @@ model Word {
   english   String
   createdAt DateTime @default(now())
 
-  results QuestionResult[]
+  // Optional grouping into a named import batch (manual import, category add,
+  // etc). Null for words that predate the feature; new writes always set it.
+  batchId Int?
+  batch   ImportBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  results CardView[]
+  quiz    QuestionResult[]
 
   @@unique([userId, romaji])
   @@index([userId])
+  @@index([batchId])
+}
+
+// A single user-facing "import" — either a romaji paste/upload or an
+// "add category" action. Used to group words into named buckets on the
+// vocab page (e.g. "Import #1", "Greetings (N5)").
+model ImportBatch {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  name      String
+  // "import" for manual romaji uploads, "category" for catalog adds.
+  source    String
+  createdAt DateTime @default(now())
+
+  words Word[]
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model QuizAttempt {
@@ -55,5 +79,19 @@ model QuestionResult {
   timeMs    Int?
   createdAt DateTime    @default(now())
 
+  @@index([wordId])
+}
+
+// Logged whenever a user "studies" a word in the Study > Vocab card view
+// (flips the card or plays the audio). Used to drive the daily streak
+// requirement of "viewed 50 cards in a day".
+model CardView {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  wordId    Int
+  word      Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
   @@index([wordId])
 }

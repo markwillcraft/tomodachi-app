@@ -7,9 +7,11 @@ import {
   UserButton,
 } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/study", label: "Study" },
   { href: "/categories", label: "N5 Categories" },
   { href: "/import", label: "Import" },
   { href: "/quiz", label: "Quiz" },
@@ -22,12 +24,26 @@ export async function SiteHeader() {
   return (
     <header className="border-b">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-4">
-        <Link href={userId ? "/dashboard" : "/"} className="text-lg font-bold">
-          <span className="jp">日本語</span> Quiz
+        <Link
+          href={userId ? "/dashboard" : "/"}
+          className="flex items-center gap-2 text-lg font-bold"
+        >
+          <span
+            aria-hidden
+            className="inline-flex size-8 items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-amber-400 text-white shadow-sm"
+          >
+            <span className="jp text-base font-bold">友</span>
+          </span>
+          <span>
+            Tomodachi
+            <span className="ml-1 text-xs font-normal text-muted-foreground">
+              ともだち
+            </span>
+          </span>
         </Link>
 
         {userId && (
-          <nav className="hidden md:flex gap-6 text-sm text-muted-foreground">
+          <nav className="hidden md:flex gap-5 text-sm text-muted-foreground">
             {NAV_LINKS.map((l) => (
               <Link
                 key={l.href}
@@ -40,7 +56,8 @@ export async function SiteHeader() {
           </nav>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
           <Show when="signed-out">
             <SignInButton mode="modal">
               <Button size="sm" variant="ghost">
