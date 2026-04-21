@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { GrammarExampleLine } from "@/components/grammar-example-line";
 
 export const dynamic = "force-dynamic";
 
@@ -70,15 +71,20 @@ export default async function GrammarLessonPage({
 
       <section className="space-y-3">
         <h2 className="text-xl font-semibold">Examples</h2>
+        <p className="text-xs text-muted-foreground">
+          Tap any word to hear it · tap the speaker to play the whole sentence.
+        </p>
         <div className="space-y-3">
           {lesson.examples.map((ex, i) => (
             <Card key={i}>
               <CardHeader className="pb-3">
                 <CardDescription>{i + 1}.</CardDescription>
-                <CardTitle className="text-base">{ex.english}</CardTitle>
+                <CardTitle className="text-lg sm:text-xl">
+                  {ex.english}
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
-                <RubyLine tokens={ex.jp} />
+              <CardContent>
+                <GrammarExampleLine tokens={ex.jp} />
               </CardContent>
             </Card>
           ))}

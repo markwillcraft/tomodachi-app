@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import type { ProgressSummary } from "./gemini";
+import { N5_KANJI } from "./kanji";
 
 export type SlowestWord = {
   romaji: string;
@@ -8,6 +9,37 @@ export type SlowestWord = {
   attempts: number;
   avgMs: number;
 };
+
+export type WeakestKanji = {
+  char: string;
+  meaning: string;
+  correct: number;
+  total: number;
+};
+
+export type KanjiQuizStats = {
+  totalAnswered: number;
+  totalCorrect: number;
+  // Per-question-kind breakdown for the three kanji quiz formats.
+  byKind: Record<string, { correct: number; total: number }>;
+  // Per-character roll-up across all kanji question kinds.
+  perChar: Array<{
+    char: string;
+    meaning: string;
+    correct: number;
+    total: number;
+  }>;
+  weakestKanji: WeakestKanji[];
+  // Number of N5 kanji the user has at least answered once.
+  charsSeen: number;
+  charsTotal: number;
+};
+
+const KANJI_QUESTION_KINDS = [
+  "kanji_to_meaning",
+  "meaning_to_kanji",
+  "kanji_to_reading",
+] as const;
 
 export async function getProgressSummary(
   userId: string,
@@ -175,4 +207,81 @@ export async function getAttemptHistory(userId: string) {
     orderBy: { createdAt: "desc" },
     take: 50,
   });
+}
+
+/**
+ * Roll-up of every kanji question the user has ever answered. The kanji
+ * itself isn't stored as a foreign key — it lives in `prompt` for the
+ * kanji-as-prompt question kinds (kanji_to_meaning / kanji_to_reading)
+ * and in `correct` for meaning_to_kanji. We normalize that here so the
+ * progress page can show "weakest kanji" exactly the way it shows
+ * weakest vocab words.
+ */
+export async function getKanjiQuizStats(
+  userId: string,
+): Promise<KanjiQuizStats> {
+  const rows = await prisma.questionResult.findMany({
+    where: {
+      attempt: { userId },
+      kind: { in: [...KANJI_QUESTION_KINDS] },
+    },
+    select: {
+      kind: true,
+      prompt: true,
+      correct: true,
+      isCorrect: true,
+    },
+  });
+
+  const byKind: Record<string, { correct: number; total: number }> = {};
+  const perCharMap = new Map<string, { correct: number; total: number }>();
+
+  for (const r of rows) {
+    const bucket = (byKind[r.kind] ??= { correct: 0, total: 0 });
+    bucket.total += 1;
+    if (r.isCorrect) bucket.correct += 1;
+
+    // For meaning_to_kanji the kanji is the answer; for the other two
+    // the kanji is the prompt. Either way we want one row per character.
+    const char = r.kind === "meaning_to_kanji" ? r.correct : r.prompt;
+    if (!char) continue;
+    const stat = perCharMap.get(char) ?? { correct: 0, total: 0 };
+    stat.total += 1;
+    if (r.isCorrect) stat.correct += 1;
+    perCharMap.set(char, stat);
+  }
+
+  const meaningByChar = new Map(N5_KANJI.map((k) => [k.char, k.meaning]));
+
+  const perChar = Array.from(perCharMap.entries())
+    .map(([char, stat]) => ({
+      char,
+      meaning: meaningByChar.get(char) ?? "",
+      correct: stat.correct,
+      total: stat.total,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  // "Weakest" = at least 2 attempts, sorted by accuracy ascending. Then
+  // by attempt count desc as a tiebreaker so the kanji you've struggled
+  // with the most prominently bubbles up.
+  const weakestKanji = perChar
+    .filter((c) => c.total >= 2)
+    .map((c) => ({ ...c, accuracy: c.correct / c.total }))
+    .sort((a, b) => a.accuracy - b.accuracy || b.total - a.total)
+    .slice(0, 10)
+    .map(({ accuracy: _a, ...rest }) => rest);
+
+  const totalAnswered = rows.length;
+  const totalCorrect = rows.filter((r) => r.isCorrect).length;
+
+  return {
+    totalAnswered,
+    totalCorrect,
+    byKind,
+    perChar,
+    weakestKanji,
+    charsSeen: perCharMap.size,
+    charsTotal: N5_KANJI.length,
+  };
 }

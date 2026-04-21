@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getProgressSummary, getSlowestWords } from "@/lib/stats";
+import {
+  getKanjiQuizStats,
+  getProgressSummary,
+  getSlowestWords,
+} from "@/lib/stats";
 import { requireUserId } from "@/lib/auth-utils";
 
 export const runtime = "nodejs";
@@ -9,9 +13,10 @@ export async function GET() {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
 
-  const [summary, slowestWords] = await Promise.all([
+  const [summary, slowestWords, kanjiStats] = await Promise.all([
     getProgressSummary(userId),
     getSlowestWords(userId),
+    getKanjiQuizStats(userId),
   ]);
 
   const attempts = await prisma.quizAttempt.findMany({
@@ -39,5 +44,6 @@ export async function GET() {
     slowestWords,
     attempts,
     accuracyByDay,
+    kanjiStats,
   });
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
@@ -194,17 +193,6 @@ export function KanjiCardDeck({
             />
           </div>
 
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>{current.strokes} strokes</span>
-            {section && (
-              <Link
-                href="/study/kanji"
-                className="underline-offset-2 hover:text-foreground hover:underline"
-              >
-                Back to all sections
-              </Link>
-            )}
-          </div>
         </div>
 
         <div className="rounded-2xl border bg-card p-4 shadow-sm sm:p-6">
@@ -233,11 +221,7 @@ export function KanjiCardDeck({
           <ChevronLeft className="size-4" />
           Previous
         </Button>
-        <div className="flex-1 text-center text-xs text-muted-foreground">
-          {section
-            ? `${section.title} · ${index + 1}/${total}`
-            : `${index + 1}/${total}`}
-        </div>
+        <div className="flex-1" />
         <Button
           onClick={() => setIndex((i) => Math.min(total - 1, i + 1))}
           disabled={index >= total - 1}
