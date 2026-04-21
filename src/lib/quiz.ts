@@ -223,6 +223,17 @@ export type GenerateOptions = {
   kanjiSubset?: Kanji[];
 };
 
+const VOCAB_KINDS = [
+  "kana_to_romaji",
+  "romaji_to_english",
+  "romaji_to_kana",
+] as const;
+const KANJI_KINDS = [
+  "kanji_to_meaning",
+  "meaning_to_kanji",
+  "kanji_to_reading",
+] as const;
+
 export function generateQuestions(
   count: number,
   mode: QuizMode,
@@ -250,6 +261,46 @@ export function generateQuestions(
       ? options.kanjiSubset
       : N5_KANJI;
 
+  // Track which (wordId | char, kind) pairs we've already asked so we can
+  // avoid duplicate questions inside the same quiz. When every kind for a
+  // given item has been used once, we reset and let it come up again — but
+  // with at least one different kind first.
+  const vocabUsed = new Map<number, Set<string>>();
+  const kanjiUsed = new Map<string, Set<string>>();
+  // Tiny ring buffer of the last few picks so we don't ask about the same
+  // word (in any form) twice in a row when the library is large enough.
+  const recentVocab: number[] = [];
+  const recentKanji: string[] = [];
+  const NO_REPEAT_WINDOW = 2;
+
+  function pickVocabKind(wordId: number): (typeof VOCAB_KINDS)[number] {
+    let used = vocabUsed.get(wordId);
+    if (!used) {
+      used = new Set();
+      vocabUsed.set(wordId, used);
+    }
+    const available = VOCAB_KINDS.filter((k) => !used!.has(k));
+    const pool = available.length === 0 ? [...VOCAB_KINDS] : available;
+    if (available.length === 0) used.clear();
+    const chosen = pickRandom(pool);
+    used.add(chosen);
+    return chosen;
+  }
+
+  function pickKanjiKind(char: string): (typeof KANJI_KINDS)[number] {
+    let used = kanjiUsed.get(char);
+    if (!used) {
+      used = new Set();
+      kanjiUsed.set(char, used);
+    }
+    const available = KANJI_KINDS.filter((k) => !used!.has(k));
+    const pool = available.length === 0 ? [...KANJI_KINDS] : available;
+    if (available.length === 0) used.clear();
+    const chosen = pickRandom(pool);
+    used.add(chosen);
+    return chosen;
+  }
+
   for (let i = 0; i < count; i++) {
     let effectiveMode: QuizMode = mode;
     if (mode === "mixed") {
@@ -263,15 +314,41 @@ export function generateQuestions(
         questions.push(buildKanaQuestion(hiraTable, "hiragana_char"));
         continue;
       }
-      const word = weightedSample(weighted);
-      questions.push(buildVocabQuestion(word, words));
+      // Pick a word, retrying a few times to avoid immediate repeats when
+      // the vocab set is large enough that a unique pick is easy.
+      let word = weightedSample(weighted);
+      if (words.length > NO_REPEAT_WINDOW + 1) {
+        for (
+          let attempt = 0;
+          attempt < 8 && recentVocab.includes(word.id);
+          attempt++
+        ) {
+          word = weightedSample(weighted);
+        }
+      }
+      const kind = pickVocabKind(word.id);
+      questions.push(buildVocabQuestion(word, words, kind));
+      recentVocab.push(word.id);
+      if (recentVocab.length > NO_REPEAT_WINDOW) recentVocab.shift();
     } else if (effectiveMode === "hiragana") {
       questions.push(buildKanaQuestion(hiraTable, "hiragana_char"));
     } else if (effectiveMode === "katakana") {
       questions.push(buildKanaQuestion(kataTable, "katakana_char"));
     } else if (effectiveMode === "kanji") {
-      const target = pickRandom(kanjiTable);
-      questions.push(buildKanjiQuestion(target, kanjiTable));
+      let target = pickRandom(kanjiTable);
+      if (kanjiTable.length > NO_REPEAT_WINDOW + 1) {
+        for (
+          let attempt = 0;
+          attempt < 8 && recentKanji.includes(target.char);
+          attempt++
+        ) {
+          target = pickRandom(kanjiTable);
+        }
+      }
+      const kind = pickKanjiKind(target.char);
+      questions.push(buildKanjiQuestion(target, kanjiTable, kind));
+      recentKanji.push(target.char);
+      if (recentKanji.length > NO_REPEAT_WINDOW) recentKanji.shift();
     }
   }
 

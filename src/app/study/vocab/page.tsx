@@ -8,6 +8,27 @@ import { DAILY_CARD_GOAL } from "@/lib/streak";
 
 export const dynamic = "force-dynamic";
 
+// Simple djb2-ish hash so we can turn "userId+date+batch" into a seed for
+// a deterministic daily shuffle. Same seed on the same day => same order.
+function hashString(s: string): number {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 33) ^ s.charCodeAt(i);
+  }
+  return h >>> 0;
+}
+
+function seededShuffle<T>(arr: T[], seed: number): T[] {
+  const out = [...arr];
+  let rng = seed || 1;
+  for (let i = out.length - 1; i > 0; i--) {
+    rng = (rng * 1664525 + 1013904223) >>> 0;
+    const j = rng % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 export default async function StudyVocabPage({
   searchParams,
 }: {
@@ -41,7 +62,15 @@ export default async function StudyVocabPage({
     new Set(todayViews.map((v) => v.wordId)),
   );
 
-  const studyWords: StudyWord[] = words.map((w) => ({
+  // Deterministic daily shuffle: same seed for the whole day so reloads
+  // don't scramble the order, but next day gives a fresh ordering.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const seed = hashString(
+    `${userId}::${todayIso}::batch=${batchId ?? "all"}`,
+  );
+  const shuffled = seededShuffle(words, seed);
+
+  const studyWords: StudyWord[] = shuffled.map((w) => ({
     id: w.id,
     romaji: w.romaji,
     hiragana: w.hiragana,
@@ -50,7 +79,12 @@ export default async function StudyVocabPage({
     batchName: w.batch?.name ?? null,
   }));
 
-  // Show the list of batches as quick filters at the top.
+  // Resume from the first card the user hasn't viewed yet today so they
+  // aren't stuck clicking "Next" through cards they already drilled.
+  const viewedSet = new Set(initialViewedIds);
+  let startIndex = studyWords.findIndex((w) => !viewedSet.has(w.id));
+  if (startIndex === -1) startIndex = 0;
+
   const batches = await prisma.importBatch.findMany({
     where: { userId },
     orderBy: { createdAt: "asc" },
@@ -75,7 +109,8 @@ export default async function StudyVocabPage({
         <p className="text-muted-foreground">
           Tap the card to flip. Tap the speaker (or press P) to hear it.
           Viewing or flipping a card counts toward your daily{" "}
-          {DAILY_CARD_GOAL}-card goal.
+          {DAILY_CARD_GOAL}-card goal. The deck reshuffles every day and
+          resumes at your first unviewed card.
         </p>
       </section>
 
@@ -101,6 +136,7 @@ export default async function StudyVocabPage({
         words={studyWords}
         initialViewedIds={initialViewedIds}
         dailyCardGoal={DAILY_CARD_GOAL}
+        initialIndex={startIndex}
       />
     </div>
   );

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   Check,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -32,13 +33,18 @@ export function StudyCardDeck({
   words: initialWords,
   initialViewedIds,
   dailyCardGoal,
+  initialIndex = 0,
 }: {
   words: StudyWord[];
   initialViewedIds: number[];
   dailyCardGoal: number;
+  initialIndex?: number;
 }) {
   const [words, setWords] = useState<StudyWord[]>(initialWords);
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(() => {
+    if (!Number.isFinite(initialIndex)) return 0;
+    return Math.max(0, Math.min(initialIndex, Math.max(0, initialWords.length - 1)));
+  });
   const [flipped, setFlipped] = useState(false);
   const [editing, setEditing] = useState(false);
   const [voiceWarning, setVoiceWarning] = useState(false);
@@ -165,6 +171,7 @@ export function StudyCardDeck({
 
   const todayCount = viewed.size;
   const pct = Math.min(100, Math.round((todayCount / dailyCardGoal) * 100));
+  const currentViewed = viewed.has(current.id);
 
   return (
     <div className="space-y-6">
@@ -232,9 +239,19 @@ export function StudyCardDeck({
           />
         ) : !flipped ? (
           <>
-            <Badge variant="outline" className="absolute left-4 top-4">
-              Romaji
-            </Badge>
+            <div className="absolute left-4 top-4 flex items-center gap-2">
+              <Badge variant="outline">Romaji</Badge>
+              {currentViewed && (
+                <Badge
+                  variant="success"
+                  className="gap-1"
+                  title="You've already viewed this card today"
+                >
+                  <CheckCircle2 className="size-3" />
+                  Viewed
+                </Badge>
+              )}
+            </div>
             <div className="text-5xl font-bold tracking-tight sm:text-6xl">
               {capitalize(current.romaji)}
             </div>
@@ -244,9 +261,15 @@ export function StudyCardDeck({
           </>
         ) : (
           <>
-            <Badge variant="secondary" className="absolute left-4 top-4">
-              Translation
-            </Badge>
+            <div className="absolute left-4 top-4 flex items-center gap-2">
+              <Badge variant="secondary">Translation</Badge>
+              {currentViewed && (
+                <Badge variant="success" className="gap-1">
+                  <CheckCircle2 className="size-3" />
+                  Viewed
+                </Badge>
+              )}
+            </div>
             <div className="space-y-4">
               <div className="space-y-1">
                 <div className="text-xs uppercase tracking-wider text-muted-foreground">

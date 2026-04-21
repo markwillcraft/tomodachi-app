@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { feedback } from "@/lib/feedback";
 
 type Question = {
   id: string;
@@ -83,6 +84,13 @@ export default function PlayPage() {
     if (picked !== null || !current) return;
     const timeMs = Date.now() - questionStartRef.current;
     const isCorrect = i === current.correctIndex;
+    // Fire immediate pick feedback, then a short follow-up for right/wrong
+    // so users get an instant confirmation and a clear result sound.
+    feedback.pick();
+    window.setTimeout(() => {
+      if (isCorrect) feedback.correct();
+      else feedback.wrong();
+    }, 90);
     setPicked(i);
     setElapsed(timeMs);
     setAnswers((prev) => [

@@ -9,6 +9,8 @@ import {
   Layers,
   LayoutDashboard,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Sparkles,
   TrendingUp,
   Upload,
@@ -46,6 +48,8 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
+const COLLAPSED_KEY = "tomodachi_sidebar_collapsed";
+
 export function AppShell({
   isSignedIn,
   children,
@@ -54,15 +58,33 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
 
-  // Close the mobile drawer whenever the route changes so users don't have
-  // to dismiss it manually after tapping a link.
+  // Rehydrate the persisted collapse state on mount so desktop users keep
+  // their preference across sessions.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COLLAPSED_KEY);
+      if (raw === "1") setCollapsed(true);
+    } catch {
+      // ignore storage errors (private mode, etc.)
+    }
+  }, []);
+
+  // Persist collapse state whenever it changes.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [collapsed]);
+
   useEffect(() => {
     setDrawerOpen(false);
   }, [pathname]);
 
-  // Lock body scroll when the drawer is open on mobile.
   useEffect(() => {
     if (!drawerOpen) return;
     const prev = document.body.style.overflow;
@@ -96,27 +118,18 @@ export function AppShell({
     );
   }
 
+  const sidebarWidthClass = collapsed ? "lg:w-16" : "lg:w-64";
+  const mainOffsetClass = collapsed ? "lg:pl-16" : "lg:pl-64";
+
   return (
     <div className="min-h-screen">
-      <Sidebar pathname={pathname} />
+      <DesktopSidebar
+        pathname={pathname}
+        collapsed={collapsed}
+        widthClass={sidebarWidthClass}
+      />
 
-      <div className="lg:hidden sticky top-0 z-30 flex items-center justify-between gap-3 border-b bg-background/80 px-4 py-3 backdrop-blur">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="size-9 p-0"
-          aria-label="Open menu"
-          onClick={() => setDrawerOpen(true)}
-        >
-          <Menu className="size-5" />
-        </Button>
-        <Logo small />
-        <div className="flex items-center gap-1">
-          <ThemeToggle />
-          <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
-        </div>
-      </div>
-
+      {/* Mobile drawer */}
       {drawerOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
@@ -142,30 +155,98 @@ export function AppShell({
             <X className="size-5" />
           </Button>
         </div>
-        <NavList items={NAV_ITEMS} pathname={pathname} />
+        <NavList items={NAV_ITEMS} pathname={pathname} collapsed={false} />
         <div className="mt-6 border-t pt-4 text-xs text-muted-foreground">
           <Sparkles className="mr-1 inline size-3" /> Tomodachi · ともだち
         </div>
       </aside>
 
-      <main className="lg:pl-64">
-        <div className="mx-auto max-w-5xl px-6 py-8 lg:py-10">{children}</div>
-      </main>
+      <div className={cn("min-h-screen transition-[padding] duration-200", mainOffsetClass)}>
+        <TopBar
+          collapsed={collapsed}
+          onToggleSidebar={() => setCollapsed((c) => !c)}
+          onOpenDrawer={() => setDrawerOpen(true)}
+        />
+        <main>
+          <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:py-10">
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
 
-function Sidebar({ pathname }: { pathname: string }) {
+function TopBar({
+  collapsed,
+  onToggleSidebar,
+  onOpenDrawer,
+}: {
+  collapsed: boolean;
+  onToggleSidebar: () => void;
+  onOpenDrawer: () => void;
+}) {
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r bg-card p-4 lg:flex">
-      <div className="mb-6">
-        <Logo />
+    <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b bg-background/80 px-3 py-2 backdrop-blur sm:px-6 sm:py-3">
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="size-9 p-0 lg:hidden"
+          aria-label="Open menu"
+          onClick={onOpenDrawer}
+        >
+          <Menu className="size-5" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="hidden size-9 p-0 lg:inline-flex"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          onClick={onToggleSidebar}
+        >
+          {collapsed ? (
+            <PanelLeftOpen className="size-5" />
+          ) : (
+            <PanelLeftClose className="size-5" />
+          )}
+        </Button>
+        <Logo small className="lg:hidden" />
       </div>
-      <NavList items={NAV_ITEMS} pathname={pathname} />
-      <div className="mt-auto flex items-center justify-between gap-2 pt-4">
-        <UserButton appearance={{ elements: { avatarBox: "size-8" } }} />
+      <div className="flex items-center gap-1 sm:gap-2">
+        <Button asChild size="sm" variant="outline" className="gap-1.5">
+          <Link href="/import">
+            <Upload className="size-4" />
+            <span className="hidden sm:inline">Import</span>
+          </Link>
+        </Button>
         <ThemeToggle />
+        <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
       </div>
+    </header>
+  );
+}
+
+function DesktopSidebar({
+  pathname,
+  collapsed,
+  widthClass,
+}: {
+  pathname: string;
+  collapsed: boolean;
+  widthClass: string;
+}) {
+  return (
+    <aside
+      className={cn(
+        "fixed inset-y-0 left-0 z-30 hidden flex-col border-r bg-card p-3 transition-[width] duration-200 lg:flex",
+        widthClass,
+      )}
+    >
+      <div className={cn("mb-6", collapsed ? "flex justify-center" : "")}>
+        <Logo small={collapsed} compact={collapsed} />
+      </div>
+      <NavList items={NAV_ITEMS} pathname={pathname} collapsed={collapsed} />
     </aside>
   );
 }
@@ -173,9 +254,11 @@ function Sidebar({ pathname }: { pathname: string }) {
 function NavList({
   items,
   pathname,
+  collapsed,
 }: {
   items: NavItem[];
   pathname: string;
+  collapsed: boolean;
 }) {
   return (
     <nav className="flex flex-col gap-1">
@@ -186,15 +269,19 @@ function NavList({
           <Link
             key={item.href}
             href={item.href}
+            title={collapsed ? item.label : undefined}
             className={cn(
-              "flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+              "flex items-center rounded-md text-sm transition-colors",
+              collapsed
+                ? "size-10 justify-center"
+                : "gap-2 px-3 py-2",
               active
                 ? "bg-primary/10 text-foreground font-medium"
                 : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
             )}
           >
             {item.icon}
-            {item.label}
+            {!collapsed && <span>{item.label}</span>}
           </Link>
         );
       })}
@@ -202,30 +289,41 @@ function NavList({
   );
 }
 
-function Logo({ small = false }: { small?: boolean }) {
+function Logo({
+  small = false,
+  compact = false,
+  className,
+}: {
+  small?: boolean;
+  compact?: boolean;
+  className?: string;
+}) {
   return (
     <Link
       href="/dashboard"
       className={cn(
         "flex items-center gap-2 font-bold",
         small ? "text-base" : "text-lg",
+        className,
       )}
     >
       <span
         aria-hidden
         className={cn(
           "inline-flex items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-amber-400 text-white shadow-sm",
-          small ? "size-7" : "size-8",
+          small ? "size-8" : "size-9",
         )}
       >
         <span className="jp font-bold">友</span>
       </span>
-      <span className="flex flex-col leading-tight">
-        Tomodachi
-        <span className="text-[10px] font-normal text-muted-foreground jp">
-          ともだち
+      {!compact && (
+        <span className="flex flex-col leading-tight">
+          Tomodachi
+          <span className="text-[10px] font-normal text-muted-foreground jp">
+            ともだち
+          </span>
         </span>
-      </span>
+      )}
     </Link>
   );
 }
