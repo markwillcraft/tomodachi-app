@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { toHiragana, toKatakana } from "wanakana";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth-utils";
 
@@ -24,7 +25,8 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { hiragana, katakana, english } = (body ?? {}) as {
+  const { romaji, hiragana, katakana, english } = (body ?? {}) as {
+    romaji?: string;
     hiragana?: string;
     katakana?: string;
     english?: string;
@@ -36,13 +38,30 @@ export async function PATCH(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Build patch: when romaji changes we automatically re-derive both kana
+  // forms unless the caller explicitly passes their own. This keeps the
+  // three fields in sync after a user-initiated correction.
+  const data: {
+    romaji?: string;
+    hiragana?: string;
+    katakana?: string;
+    english?: string;
+  } = {};
+
+  if (typeof romaji === "string" && romaji.trim().length > 0) {
+    const cleaned = romaji.trim().toLowerCase();
+    data.romaji = cleaned;
+    const noSpaces = cleaned.replace(/\s+/g, "");
+    if (typeof hiragana !== "string") data.hiragana = toHiragana(noSpaces);
+    if (typeof katakana !== "string") data.katakana = toKatakana(noSpaces);
+  }
+  if (typeof hiragana === "string") data.hiragana = hiragana;
+  if (typeof katakana === "string") data.katakana = katakana;
+  if (typeof english === "string") data.english = english;
+
   const updated = await prisma.word.update({
     where: { id },
-    data: {
-      ...(typeof hiragana === "string" ? { hiragana } : {}),
-      ...(typeof katakana === "string" ? { katakana } : {}),
-      ...(typeof english === "string" ? { english } : {}),
-    },
+    data,
   });
 
   return NextResponse.json({ word: updated });

@@ -2,16 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  AlertCircle,
+  Check,
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Pencil,
   Repeat,
   Volume2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
-import { speakJapanese } from "@/lib/speech";
+import { hasJapaneseVoiceInstalled, speakJapanese } from "@/lib/speech";
 
 export type StudyWord = {
   id: number;
@@ -22,9 +28,8 @@ export type StudyWord = {
   batchName?: string | null;
 };
 
-
 export function StudyCardDeck({
-  words,
+  words: initialWords,
   initialViewedIds,
   dailyCardGoal,
 }: {
@@ -32,8 +37,11 @@ export function StudyCardDeck({
   initialViewedIds: number[];
   dailyCardGoal: number;
 }) {
+  const [words, setWords] = useState<StudyWord[]>(initialWords);
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [voiceWarning, setVoiceWarning] = useState(false);
   const [viewed, setViewed] = useState<Set<number>>(
     () => new Set(initialViewedIds),
   );
@@ -43,10 +51,26 @@ export function StudyCardDeck({
   const total = words.length;
   const current: StudyWord | undefined = words[index];
 
+  // Detect if the user has any Japanese voice installed. We don't block
+  // anything — just surface a one-time hint so they understand why the
+  // audio sounds wrong if they're on a system with no Japanese TTS pack.
+  useEffect(() => {
+    function check() {
+      setVoiceWarning(!hasJapaneseVoiceInstalled());
+    }
+    check();
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.addEventListener("voiceschanged", check);
+      return () =>
+        window.speechSynthesis.removeEventListener("voiceschanged", check);
+    }
+  }, []);
+
   // Keyboard nav: ←/→ to move, space to flip, P to play audio.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.target instanceof HTMLElement && e.target.tagName === "INPUT") return;
+      if (editing) return;
+      if (e.target instanceof HTMLElement && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
       if (e.key === "ArrowRight") next();
       if (e.key === "ArrowLeft") prev();
       if (e.key === " " || e.key === "Enter") {
@@ -60,7 +84,12 @@ export function StudyCardDeck({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, current]);
+  }, [index, current, editing]);
+
+  // Reset the editor when the visible card changes.
+  useEffect(() => {
+    setEditing(false);
+  }, [index]);
 
   function speak(text: string) {
     speakJapanese(text);
@@ -82,7 +111,6 @@ export function StudyCardDeck({
         return n;
       });
     } catch {
-      // Best-effort. Streak can recover on the next view.
       seenThisSession.current.delete(wordId);
     } finally {
       setLogging(false);
@@ -106,8 +134,15 @@ export function StudyCardDeck({
   }
 
   function flip() {
+    if (editing) return;
     setFlipped((f) => !f);
     if (current) void logView(current.id);
+  }
+
+  function applyUpdate(updated: StudyWord) {
+    setWords((prev) =>
+      prev.map((w) => (w.id === updated.id ? { ...w, ...updated } : w)),
+    );
   }
 
   if (total === 0) {
@@ -133,6 +168,19 @@ export function StudyCardDeck({
 
   return (
     <div className="space-y-6">
+      {voiceWarning && (
+        <Alert>
+          <AlertCircle className="size-4" />
+          <AlertDescription>
+            No Japanese voice is installed on your device, so audio will fall
+            back to your default voice and may sound wrong. On macOS install
+            one in <em>System Settings → Accessibility → Spoken Content →
+            System voice → Manage Voices</em> (look for Kyoko). On Windows
+            install a Japanese language pack.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-muted-foreground">
           Card {index + 1} / {total}
@@ -159,19 +207,30 @@ export function StudyCardDeck({
         tabIndex={0}
         onClick={flip}
         onKeyDown={(e) => {
+          if (editing) return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             flip();
           }
         }}
         className={cn(
-          "group relative mx-auto flex min-h-[320px] w-full max-w-2xl cursor-pointer select-none flex-col items-center justify-center rounded-2xl border-2 p-10 text-center shadow-sm transition-all",
+          "group relative mx-auto flex min-h-[320px] w-full max-w-2xl select-none flex-col items-center justify-center rounded-2xl border-2 p-10 text-center shadow-sm transition-all",
+          editing ? "cursor-default" : "cursor-pointer",
           flipped
             ? "border-primary/40 bg-gradient-to-br from-primary/5 to-accent/30"
             : "border-border bg-card hover:border-primary/40",
         )}
       >
-        {!flipped ? (
+        {editing ? (
+          <EditForm
+            word={current}
+            onCancel={() => setEditing(false)}
+            onSaved={(updated) => {
+              applyUpdate(updated);
+              setEditing(false);
+            }}
+          />
+        ) : !flipped ? (
           <>
             <Badge variant="outline" className="absolute left-4 top-4">
               Romaji
@@ -221,19 +280,35 @@ export function StudyCardDeck({
           </>
         )}
 
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label="Play pronunciation"
-          onClick={(e) => {
-            e.stopPropagation();
-            speak(current.hiragana);
-            void logView(current.id);
-          }}
-          className="absolute right-3 top-3 size-10 p-0"
-        >
-          <Volume2 className="size-5" />
-        </Button>
+        {!editing && (
+          <div className="absolute right-3 top-3 flex gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label="Edit card"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditing(true);
+              }}
+              className="size-9 p-0"
+            >
+              <Pencil className="size-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-label="Play pronunciation"
+              onClick={(e) => {
+                e.stopPropagation();
+                speak(current.hiragana);
+                void logView(current.id);
+              }}
+              className="size-10 p-0"
+            >
+              <Volume2 className="size-5" />
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-3">
@@ -257,8 +332,121 @@ export function StudyCardDeck({
       </div>
 
       <p className="text-center text-xs text-muted-foreground">
-        Shortcuts: ← / → to navigate, space to flip, P to play audio
+        Shortcuts: ← / → to navigate, space to flip, P to play audio · Pencil
+        icon to fix wrong romaji
       </p>
+    </div>
+  );
+}
+
+function EditForm({
+  word,
+  onCancel,
+  onSaved,
+}: {
+  word: StudyWord;
+  onCancel: () => void;
+  onSaved: (updated: StudyWord) => void;
+}) {
+  const [romaji, setRomaji] = useState(word.romaji);
+  const [english, setEnglish] = useState(word.english);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    if (romaji.trim().length === 0) {
+      setError("Romaji can't be empty.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/words/${word.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          romaji: romaji.trim().toLowerCase(),
+          english: english.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not save");
+      onSaved({
+        ...word,
+        romaji: data.word.romaji,
+        hiragana: data.word.hiragana,
+        katakana: data.word.katakana,
+        english: data.word.english,
+      });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="w-full space-y-4 text-left"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex items-center justify-between">
+        <Badge variant="outline">Editing</Badge>
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label="Close edit"
+          onClick={onCancel}
+          className="size-8 p-0"
+        >
+          <X className="size-4" />
+        </Button>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Romaji
+        </label>
+        <Input
+          value={romaji}
+          onChange={(e) => setRomaji(e.target.value)}
+          placeholder="e.g. kara kimashita"
+          autoFocus
+          className="text-lg"
+        />
+        <p className="text-xs text-muted-foreground">
+          Hiragana and katakana will be re-derived automatically when you save.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          English meaning
+        </label>
+        <Input
+          value={english}
+          onChange={(e) => setEnglish(e.target.value)}
+          placeholder="e.g. (I) came from"
+        />
+      </div>
+
+      {error && (
+        <p className="text-sm text-destructive">{error}</p>
+      )}
+
+      <div className="flex justify-end gap-2 pt-2">
+        <Button variant="outline" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+        <Button onClick={save} disabled={saving}>
+          {saving ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Check className="size-4" />
+          )}
+          Save
+        </Button>
+      </div>
     </div>
   );
 }
