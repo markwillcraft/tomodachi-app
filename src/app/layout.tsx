@@ -35,7 +35,10 @@ export default async function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className={cn("min-h-screen antialiased")}>
+      <body
+        className={cn("min-h-screen antialiased")}
+        suppressHydrationWarning
+      >
         <ThemeProvider>
           <ClerkProvider
             appearance={{
