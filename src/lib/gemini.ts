@@ -28,6 +28,71 @@ function extractJson(text: string): unknown {
   }
 }
 
+export type EnrichedRomajiResult = {
+  // The user's input romaji, possibly with spaces inserted between words
+  // (e.g. "douzoyoroshiku" -> "douzo yoroshiku").
+  romaji: string;
+  // Concise English meaning (max ~4 words). Empty string if unknown.
+  english: string;
+};
+
+/**
+ * Asks Gemini to (1) split run-on romaji into properly spaced words and
+ * (2) translate each entry to English in one round trip. We ask for both
+ * at once so a single API call handles enrichment.
+ */
+export async function enrichRomajiBatch(
+  romajiInputs: string[],
+): Promise<EnrichedRomajiResult[]> {
+  if (romajiInputs.length === 0) return [];
+
+  const model = getModel();
+  const prompt = `You are a Japanese language assistant.
+
+For each input romaji string, return a JSON object with two fields:
+- "romaji": the same input rewritten in Hepburn romaji with proper word
+  spacing inserted between Japanese words. Examples:
+    "douzoyoroshiku" -> "douzo yoroshiku"
+    "ohayougozaimasu" -> "ohayou gozaimasu"
+    "watashi" -> "watashi"
+  Keep all macrons/long vowels exactly as the user wrote them (e.g.
+  "ou" stays "ou", "uu" stays "uu"). Do not add or remove any letters.
+  Lowercase only.
+- "english": concise English meaning (max 4 words). Empty string "" if
+  you do not know the word.
+
+Return ONLY a JSON array of these objects in the same order as the input.
+
+Input (JSON):
+${JSON.stringify(romajiInputs)}`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    const parsed = extractJson(text);
+    if (!Array.isArray(parsed)) throw new Error("Expected an array");
+    return romajiInputs.map((input, i) => {
+      const v = parsed[i];
+      if (v && typeof v === "object") {
+        const obj = v as { romaji?: unknown; english?: unknown };
+        const romaji =
+          typeof obj.romaji === "string" && obj.romaji.trim().length > 0
+            ? obj.romaji.trim().toLowerCase()
+            : input;
+        const english =
+          typeof obj.english === "string" ? obj.english.trim() : "";
+        return { romaji, english };
+      }
+      return { romaji: input, english: "" };
+    });
+  } catch (err) {
+    console.error("Gemini enrichRomajiBatch failed:", err);
+    return romajiInputs.map((r) => ({ romaji: r, english: "" }));
+  }
+}
+
+// Older API kept for callers that only want translations of hiragana words.
+// New code should prefer enrichRomajiBatch above.
 export async function translateBatch(
   hiraganaWords: string[],
 ): Promise<string[]> {

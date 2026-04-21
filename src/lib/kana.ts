@@ -35,3 +35,55 @@ export const KATAKANA: KanaPair[] = [
   { kana: "バ", romaji: "ba" }, { kana: "ビ", romaji: "bi" }, { kana: "ブ", romaji: "bu" }, { kana: "ベ", romaji: "be" }, { kana: "ボ", romaji: "bo" },
   { kana: "パ", romaji: "pa" }, { kana: "ピ", romaji: "pi" }, { kana: "プ", romaji: "pu" }, { kana: "ペ", romaji: "pe" }, { kana: "ポ", romaji: "po" },
 ];
+
+// Row-by-row groups so the kana quiz can offer "ka,ki,ku,ke,ko" toggles.
+// Each id is stable and matches across hiragana/katakana so the quiz UI
+// can flip script without losing the user's selection.
+export type KanaGroup = {
+  id: string;
+  label: string;
+  // Romaji for each cell in the row, used as the lookup key into the kana
+  // tables above.
+  romaji: string[];
+  type: "gojuon" | "dakuten" | "handakuten";
+};
+
+export const KANA_GROUPS: KanaGroup[] = [
+  { id: "a", label: "a, i, u, e, o", romaji: ["a", "i", "u", "e", "o"], type: "gojuon" },
+  { id: "k", label: "ka, ki, ku, ke, ko", romaji: ["ka", "ki", "ku", "ke", "ko"], type: "gojuon" },
+  { id: "s", label: "sa, shi, su, se, so", romaji: ["sa", "shi", "su", "se", "so"], type: "gojuon" },
+  { id: "t", label: "ta, chi, tsu, te, to", romaji: ["ta", "chi", "tsu", "te", "to"], type: "gojuon" },
+  { id: "n", label: "na, ni, nu, ne, no", romaji: ["na", "ni", "nu", "ne", "no"], type: "gojuon" },
+  { id: "h", label: "ha, hi, fu, he, ho", romaji: ["ha", "hi", "fu", "he", "ho"], type: "gojuon" },
+  { id: "m", label: "ma, mi, mu, me, mo", romaji: ["ma", "mi", "mu", "me", "mo"], type: "gojuon" },
+  { id: "y", label: "ya, yu, yo", romaji: ["ya", "yu", "yo"], type: "gojuon" },
+  { id: "r", label: "ra, ri, ru, re, ro", romaji: ["ra", "ri", "ru", "re", "ro"], type: "gojuon" },
+  { id: "w", label: "wa, wo, n", romaji: ["wa", "wo", "n"], type: "gojuon" },
+  { id: "g", label: "ga, gi, gu, ge, go", romaji: ["ga", "gi", "gu", "ge", "go"], type: "dakuten" },
+  { id: "z", label: "za, ji, zu, ze, zo", romaji: ["za", "ji", "zu", "ze", "zo"], type: "dakuten" },
+  { id: "d", label: "da, de, do", romaji: ["da", "de", "do"], type: "dakuten" },
+  { id: "b", label: "ba, bi, bu, be, bo", romaji: ["ba", "bi", "bu", "be", "bo"], type: "dakuten" },
+  { id: "p", label: "pa, pi, pu, pe, po", romaji: ["pa", "pi", "pu", "pe", "po"], type: "handakuten" },
+];
+
+// Lookup helpers used by the quiz to filter to the user's chosen rows /
+// scripts. Returns deduped pairs to avoid duplicate questions when the
+// same romaji appears in both hiragana/katakana for "both" scripts.
+export type KanaScript = "hiragana" | "katakana" | "both";
+
+export function getKanaForGroups(
+  groupIds: string[],
+  script: KanaScript,
+): KanaPair[] {
+  const wantedRomaji = new Set(
+    KANA_GROUPS.filter((g) => groupIds.includes(g.id)).flatMap((g) => g.romaji),
+  );
+  const out: KanaPair[] = [];
+  if (script === "hiragana" || script === "both") {
+    for (const k of HIRAGANA) if (wantedRomaji.has(k.romaji)) out.push(k);
+  }
+  if (script === "katakana" || script === "both") {
+    for (const k of KATAKANA) if (wantedRomaji.has(k.romaji)) out.push(k);
+  }
+  return out;
+}

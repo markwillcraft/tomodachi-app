@@ -161,7 +161,9 @@ export default function PlayPage() {
   const isJapanesePrompt =
     current.kind === "kana_to_romaji" ||
     current.kind === "hiragana_char" ||
-    current.kind === "katakana_char";
+    current.kind === "katakana_char" ||
+    current.kind === "kanji_to_meaning" ||
+    current.kind === "kanji_to_reading";
 
   return (
     <div className="space-y-8">
@@ -402,6 +404,12 @@ function kindLabel(kind: string): string {
       return "Hiragana → Romaji";
     case "katakana_char":
       return "Katakana → Romaji";
+    case "kanji_to_meaning":
+      return "Kanji → Meaning";
+    case "meaning_to_kanji":
+      return "Meaning → Kanji";
+    case "kanji_to_reading":
+      return "Kanji → Reading";
     default:
       return kind;
   }

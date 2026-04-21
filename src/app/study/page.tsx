@@ -1,9 +1,16 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowRight, BookOpen, Flame, GraduationCap } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  Brush,
+  Flame,
+  GraduationCap,
+} from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { N5_LESSONS } from "@/lib/grammar";
+import { N5_KANJI } from "@/lib/kanji";
 import { getStreak } from "@/lib/streak";
 import { StreakWidget } from "@/components/streak-widget";
 import {
@@ -37,7 +44,7 @@ export default async function StudyHubPage() {
 
       <StreakWidget {...streak} />
 
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Link href="/study/vocab" className="group block">
           <Card className="h-full transition-colors group-hover:border-primary/50 group-hover:bg-accent/30">
             <CardHeader>
@@ -49,8 +56,8 @@ export default async function StudyHubPage() {
                 </Badge>
               </div>
               <CardDescription>
-                Flip romaji → kana + meaning. Tap the speaker to hear native
-                pronunciation. Daily goal: view 50 cards.
+                Flip romaji → kana + meaning. Tap the speaker to hear a native
+                female voice. Daily goal: view 50 cards.
               </CardDescription>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground flex items-center gap-1 group-hover:text-foreground">
@@ -76,6 +83,27 @@ export default async function StudyHubPage() {
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground flex items-center gap-1 group-hover:text-foreground">
               Open grammar <ArrowRight className="size-3.5" />
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link href="/study/kanji" className="group block">
+          <Card className="h-full transition-colors group-hover:border-primary/50 group-hover:bg-accent/30">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Brush className="size-5" />
+                <CardTitle>N5 kanji</CardTitle>
+                <Badge variant="secondary" className="ml-auto">
+                  {N5_KANJI.length} chars
+                </Badge>
+              </div>
+              <CardDescription>
+                The full N5 kanji set with on'yomi/kun'yomi audio and animated
+                stroke-by-stroke order.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground flex items-center gap-1 group-hover:text-foreground">
+              Open kanji <ArrowRight className="size-3.5" />
             </CardContent>
           </Card>
         </Link>

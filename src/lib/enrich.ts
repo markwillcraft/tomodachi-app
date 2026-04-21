@@ -1,7 +1,8 @@
 import { toHiragana, toKatakana } from "wanakana";
-import { translateBatch } from "./gemini";
+import { enrichRomajiBatch } from "./gemini";
 
 export type EnrichedWord = {
+  // Properly spaced romaji ("douzo yoroshiku") suitable for display.
   romaji: string;
   hiragana: string;
   katakana: string;
@@ -17,21 +18,23 @@ export async function enrichRomajiList(
     .filter((r) => r.length > 0);
 
   const unique = Array.from(new Set(cleaned));
+  if (unique.length === 0) return [];
 
-  const base = unique.map((r) => ({
-    romaji: r,
-    hiragana: toHiragana(r),
-    katakana: toKatakana(r),
-  }));
+  // One Gemini call gets us properly-spaced romaji AND English meanings,
+  // which is what we want before deriving the kana.
+  const enriched = await enrichRomajiBatch(unique);
 
-  const translations = await translateBatch(base.map((b) => b.hiragana));
-
-  return base.map((b, i) => {
-    const english = (translations[i] ?? "").trim();
+  return enriched.map((e) => {
+    // wanakana ignores spaces when converting, so spaced romaji like
+    // "douzo yoroshiku" still becomes "どうぞよろしく" cleanly.
+    const hiragana = toHiragana(e.romaji.replace(/\s+/g, ""));
+    const katakana = toKatakana(e.romaji.replace(/\s+/g, ""));
     return {
-      ...b,
-      english,
-      needsReview: english.length === 0,
+      romaji: e.romaji,
+      hiragana,
+      katakana,
+      english: e.english,
+      needsReview: e.english.length === 0,
     };
   });
 }

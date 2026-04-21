@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { speakJapanese } from "@/lib/speech";
 
 export type StudyWord = {
   id: number;
@@ -21,16 +22,6 @@ export type StudyWord = {
   batchName?: string | null;
 };
 
-// Tries to find the best Japanese voice the browser exposes. Falls back to
-// the system default if none is available (which still usually works on
-// modern Chrome/Safari/Edge).
-function pickJapaneseVoice(): SpeechSynthesisVoice | null {
-  if (typeof window === "undefined" || !("speechSynthesis" in window))
-    return null;
-  const voices = window.speechSynthesis.getVoices();
-  const ja = voices.find((v) => v.lang?.toLowerCase().startsWith("ja"));
-  return ja ?? null;
-}
 
 export function StudyCardDeck({
   words,
@@ -72,14 +63,7 @@ export function StudyCardDeck({
   }, [index, current]);
 
   function speak(text: string) {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = "ja-JP";
-    utter.rate = 0.9;
-    const voice = pickJapaneseVoice();
-    if (voice) utter.voice = voice;
-    window.speechSynthesis.speak(utter);
+    speakJapanese(text);
   }
 
   async function logView(wordId: number) {

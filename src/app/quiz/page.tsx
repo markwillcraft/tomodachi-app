@@ -1,11 +1,16 @@
-"use client";
-
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import { Loader2, Play } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import {
+  ArrowRight,
+  BookOpen,
+  Brush,
+  GraduationCap,
+  Languages,
+  Sparkles,
+} from "lucide-react";
+import { auth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
+import { N5_KANJI } from "@/lib/kanji";
 import {
   Card,
   CardContent,
@@ -13,183 +18,107 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
-const COUNTS = [5, 10, 20, 50];
-const MODES = [
-  { id: "vocab", label: "Vocabulary", desc: "Uses your imported words." },
-  { id: "hiragana", label: "Hiragana", desc: "Single hiragana characters." },
-  { id: "katakana", label: "Katakana", desc: "Single katakana characters." },
-  { id: "mixed", label: "Mixed", desc: "Vocab + hiragana + katakana." },
-] as const;
+export const dynamic = "force-dynamic";
 
-type ModeId = (typeof MODES)[number]["id"];
+export default async function QuizHubPage() {
+  const { userId } = await auth();
+  if (!userId) redirect("/sign-in");
 
-export default function QuizSetupPage() {
-  const router = useRouter();
-  const [count, setCount] = useState<number>(10);
-  const [customCount, setCustomCount] = useState<string>("");
-  const [mode, setMode] = useState<ModeId>("vocab");
-  const [wordCount, setWordCount] = useState<number | null>(null);
-  const [starting, setStarting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/words")
-      .then((r) => r.json())
-      .then((d) => setWordCount(d.words.length));
-  }, []);
-
-  const effectiveCount = customCount
-    ? Math.max(1, Math.min(200, Number(customCount) || 0))
-    : count;
-
-  const vocabUnavailable =
-    mode === "vocab" && wordCount !== null && wordCount === 0;
-
-  const lowVocabWarning =
-    (mode === "vocab" || mode === "mixed") &&
-    wordCount !== null &&
-    wordCount > 0 &&
-    wordCount < 4;
-
-  async function startQuiz() {
-    setError(null);
-    setStarting(true);
-    try {
-      const res = await fetch("/api/quiz/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ count: effectiveCount, mode }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Could not generate quiz");
-      }
-      const data = await res.json();
-      sessionStorage.setItem(
-        "quiz",
-        JSON.stringify({ mode, questions: data.questions }),
-      );
-      router.push("/quiz/play");
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setStarting(false);
-    }
-  }
+  const wordCount = await prisma.word.count({ where: { userId } });
 
   return (
-    <div className="space-y-8">
-      <h1 className="text-3xl font-bold tracking-tight">Start a quiz</h1>
+    <div className="space-y-10">
+      <section className="space-y-2">
+        <h1 className="text-4xl font-bold tracking-tight">Quiz</h1>
+        <p className="text-muted-foreground text-lg">
+          Pick what you want to drill. Every quiz answer counts toward your
+          daily streak goal of 50 questions.
+        </p>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>How many questions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2 items-center">
-            {COUNTS.map((c) => (
-              <Button
-                key={c}
-                variant={!customCount && count === c ? "default" : "outline"}
-                onClick={() => {
-                  setCount(c);
-                  setCustomCount("");
-                }}
-              >
-                {c}
-              </Button>
-            ))}
-            <div className="flex items-center gap-2">
-              <Label htmlFor="custom" className="text-muted-foreground">
-                or
-              </Label>
-              <Input
-                id="custom"
-                type="number"
-                min={1}
-                max={200}
-                placeholder="Custom"
-                value={customCount}
-                onChange={(e) => setCustomCount(e.target.value)}
-                className="w-28"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <ModeCard
+          href="/quiz/vocab"
+          title="Vocabulary"
+          desc="Quiz your imported words. Romaji ↔ kana ↔ English."
+          badge={`${wordCount} words`}
+          icon={<BookOpen className="size-5" />}
+          accent="from-rose-500/20 to-amber-400/10"
+        />
+        <ModeCard
+          href="/quiz/kana"
+          title="Hiragana / Katakana"
+          desc="Pick the script (one or both) and choose which rows: a-row, ka-row, etc."
+          badge="46+ chars"
+          icon={<Languages className="size-5" />}
+          accent="from-cyan-400/20 to-blue-500/10"
+        />
+        <ModeCard
+          href="/quiz/kanji"
+          title="N5 Kanji"
+          desc="The full N5 kanji set. Recognize the meaning, the character, or the reading."
+          badge={`${N5_KANJI.length} chars`}
+          icon={<Brush className="size-5" />}
+          accent="from-amber-400/20 to-emerald-400/10"
+        />
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Mode</CardTitle>
-          <CardDescription>What kind of questions to ask</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <RadioGroup
-            value={mode}
-            onValueChange={(v) => setMode(v as ModeId)}
-            className="grid grid-cols-1 sm:grid-cols-2 gap-3"
-          >
-            {MODES.map((m) => (
-              <Label
-                key={m.id}
-                htmlFor={`mode-${m.id}`}
-                className={cn(
-                  "flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors hover:bg-accent/30",
-                  mode === m.id && "border-primary bg-accent/30",
-                )}
-              >
-                <RadioGroupItem
-                  value={m.id}
-                  id={`mode-${m.id}`}
-                  className="mt-1"
-                />
-                <div className="space-y-1">
-                  <div className="font-semibold">{m.label}</div>
-                  <div className="text-sm text-muted-foreground">{m.desc}</div>
-                </div>
-              </Label>
-            ))}
-          </RadioGroup>
-        </CardContent>
-      </Card>
-
-      {vocabUnavailable && (
-        <Alert variant="warning">
-          <AlertDescription>
-            You have no vocabulary words yet.{" "}
-            <a href="/import" className="underline">
-              Import some
-            </a>{" "}
-            to use Vocabulary mode.
-          </AlertDescription>
-        </Alert>
-      )}
-      {lowVocabWarning && (
-        <Alert variant="warning">
-          <AlertDescription>
-            Heads up: you only have {wordCount} word(s) imported. Distractors
-            will repeat. Add more for better quizzes.
-          </AlertDescription>
-        </Alert>
-      )}
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      <Button
-        size="lg"
-        onClick={startQuiz}
-        disabled={starting || vocabUnavailable}
-      >
-        {starting ? <Loader2 className="animate-spin" /> : <Play />}
-        {starting ? "Building quiz…" : `Start ${effectiveCount}-question quiz`}
-      </Button>
+      <section className="rounded-xl border bg-muted/30 p-5 text-sm text-muted-foreground flex items-start gap-3">
+        <Sparkles className="size-4 mt-0.5 text-violet-400" />
+        <div>
+          <strong className="text-foreground">Tip:</strong> the AI study coach
+          on the{" "}
+          <Link href="/progress" className="underline">
+            Progress page
+          </Link>{" "}
+          looks at your weakest words across all quiz types and tells you what
+          to drill next.
+        </div>
+      </section>
     </div>
+  );
+}
+
+function ModeCard({
+  href,
+  title,
+  desc,
+  badge,
+  icon,
+  accent,
+}: {
+  href: string;
+  title: string;
+  desc: string;
+  badge: string;
+  icon: React.ReactNode;
+  accent: string;
+}) {
+  return (
+    <Link href={href} className="group block">
+      <Card
+        className={
+          "h-full transition-colors group-hover:border-primary/50 bg-gradient-to-br " +
+          accent
+        }
+      >
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            {icon}
+            <CardTitle className="text-base">{title}</CardTitle>
+            <Badge variant="secondary" className="ml-auto">
+              {badge}
+            </Badge>
+          </div>
+          <CardDescription>{desc}</CardDescription>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground flex items-center gap-1 group-hover:text-foreground">
+          <GraduationCap className="size-3.5" />
+          Start <ArrowRight className="size-3.5" />
+        </CardContent>
+      </Card>
+    </Link>
   );
 }

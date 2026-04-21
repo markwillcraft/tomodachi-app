@@ -1,22 +1,26 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import NextTopLoader from "nextjs-toploader";
+import { auth } from "@clerk/nextjs/server";
 import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
 import { cn } from "@/lib/utils";
-import { SiteHeader } from "@/components/site-header";
+import { AppShell } from "@/components/app-shell";
 import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
   title: "Tomodachi — Japanese study buddy",
   description:
-    "Study Japanese with vocab cards, N5 grammar lessons, and AI-powered quizzes.",
+    "Study Japanese with vocab cards, N5 grammar lessons, kanji stroke order, and AI-powered quizzes.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { userId } = await auth();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -42,8 +46,13 @@ export default function RootLayout({
               },
             }}
           >
-            <SiteHeader />
-            <main className="mx-auto max-w-5xl px-6 py-10">{children}</main>
+            <NextTopLoader
+              color="linear-gradient(to right, hsl(217 91% 60%), hsl(330 80% 60%), hsl(38 92% 55%))"
+              height={3}
+              showSpinner={false}
+              shadow="0 0 10px hsl(217 91% 60%), 0 0 5px hsl(217 91% 60%)"
+            />
+            <AppShell isSignedIn={!!userId}>{children}</AppShell>
           </ClerkProvider>
         </ThemeProvider>
       </body>
