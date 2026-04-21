@@ -1,0 +1,303 @@
+import { toHiragana, toKatakana } from "wanakana";
+
+export type CatalogWord = {
+  romaji: string;
+  hiragana: string;
+  katakana: string;
+  english: string;
+};
+
+export type CatalogCategory = {
+  slug: string;
+  name: string;
+  description: string;
+  level: "N5";
+  // Words are written as { romaji, english } pairs and the kana are derived
+  // automatically from romaji via wanakana so we never get them out of sync.
+  words: CatalogWord[];
+};
+
+function w(romaji: string, english: string): CatalogWord {
+  return {
+    romaji,
+    hiragana: toHiragana(romaji),
+    katakana: toKatakana(romaji),
+    english,
+  };
+}
+
+// Hand-curated JLPT N5 vocabulary, grouped into common beginner topics.
+// Pronunciations use Hepburn romaji that wanakana converts cleanly.
+const RAW: Array<Omit<CatalogCategory, "words"> & { words: Array<[string, string]> }> = [
+  {
+    slug: "n5-greetings",
+    name: "Greetings",
+    level: "N5",
+    description: "Everyday hellos, goodbyes, and polite phrases.",
+    words: [
+      ["ohayou", "good morning"],
+      ["konnichiwa", "hello / good afternoon"],
+      ["konbanwa", "good evening"],
+      ["oyasumi", "good night"],
+      ["sayounara", "goodbye"],
+      ["arigatou", "thank you"],
+      ["sumimasen", "excuse me / sorry"],
+      ["gomennasai", "I'm sorry"],
+      ["hajimemashite", "nice to meet you"],
+      ["yoroshiku", "please treat me well"],
+      ["ittekimasu", "I'm leaving (going and coming back)"],
+      ["itterasshai", "take care (said to one leaving)"],
+      ["tadaima", "I'm home"],
+      ["okaeri", "welcome back"],
+      ["itadakimasu", "thanks for the meal (before eating)"],
+      ["gochisousama", "thanks for the meal (after eating)"],
+    ],
+  },
+  {
+    slug: "n5-numbers",
+    name: "Numbers",
+    level: "N5",
+    description: "Counting from one to one hundred.",
+    words: [
+      ["ichi", "one"],
+      ["ni", "two"],
+      ["san", "three"],
+      ["yon", "four"],
+      ["go", "five"],
+      ["roku", "six"],
+      ["nana", "seven"],
+      ["hachi", "eight"],
+      ["kyuu", "nine"],
+      ["juu", "ten"],
+      ["juuichi", "eleven"],
+      ["juuni", "twelve"],
+      ["nijuu", "twenty"],
+      ["sanjuu", "thirty"],
+      ["yonjuu", "forty"],
+      ["gojuu", "fifty"],
+      ["hyaku", "one hundred"],
+      ["sen", "one thousand"],
+      ["man", "ten thousand"],
+      ["zero", "zero"],
+    ],
+  },
+  {
+    slug: "n5-days-and-time",
+    name: "Days & Time",
+    level: "N5",
+    description: "Days of the week and basic time words.",
+    words: [
+      ["getsuyoubi", "Monday"],
+      ["kayoubi", "Tuesday"],
+      ["suiyoubi", "Wednesday"],
+      ["mokuyoubi", "Thursday"],
+      ["kinyoubi", "Friday"],
+      ["doyoubi", "Saturday"],
+      ["nichiyoubi", "Sunday"],
+      ["kyou", "today"],
+      ["kinou", "yesterday"],
+      ["ashita", "tomorrow"],
+      ["asa", "morning"],
+      ["hiru", "noon / daytime"],
+      ["yoru", "night"],
+      ["ima", "now"],
+      ["jikan", "time / hour"],
+      ["fun", "minute"],
+      ["byou", "second"],
+    ],
+  },
+  {
+    slug: "n5-family",
+    name: "Family",
+    level: "N5",
+    description: "Words for family members (humble form).",
+    words: [
+      ["kazoku", "family"],
+      ["chichi", "father (humble)"],
+      ["haha", "mother (humble)"],
+      ["otousan", "father (polite)"],
+      ["okaasan", "mother (polite)"],
+      ["ani", "older brother (humble)"],
+      ["ane", "older sister (humble)"],
+      ["oniisan", "older brother (polite)"],
+      ["oneesan", "older sister (polite)"],
+      ["otouto", "younger brother"],
+      ["imouto", "younger sister"],
+      ["sofu", "grandfather (humble)"],
+      ["sobo", "grandmother (humble)"],
+      ["ojiisan", "grandfather (polite)"],
+      ["obaasan", "grandmother (polite)"],
+      ["kodomo", "child"],
+      ["musuko", "son"],
+      ["musume", "daughter"],
+    ],
+  },
+  {
+    slug: "n5-colors",
+    name: "Colors",
+    level: "N5",
+    description: "Basic colors as nouns.",
+    words: [
+      ["aka", "red"],
+      ["ao", "blue"],
+      ["kiiro", "yellow"],
+      ["midori", "green"],
+      ["kuro", "black"],
+      ["shiro", "white"],
+      ["chairo", "brown"],
+      ["murasaki", "purple"],
+      ["pinku", "pink"],
+      ["orenji", "orange"],
+      ["haiiro", "gray"],
+      ["kin", "gold"],
+      ["gin", "silver"],
+    ],
+  },
+  {
+    slug: "n5-food-and-drink",
+    name: "Food & Drink",
+    level: "N5",
+    description: "Common food and drink vocabulary.",
+    words: [
+      ["mizu", "water"],
+      ["ocha", "green tea"],
+      ["koohii", "coffee"],
+      ["gyuunyuu", "milk"],
+      ["juusu", "juice"],
+      ["biiru", "beer"],
+      ["sake", "sake / alcohol"],
+      ["gohan", "rice / meal"],
+      ["pan", "bread"],
+      ["niku", "meat"],
+      ["sakana", "fish"],
+      ["yasai", "vegetable"],
+      ["kudamono", "fruit"],
+      ["ringo", "apple"],
+      ["mikan", "mandarin orange"],
+      ["tamago", "egg"],
+      ["asagohan", "breakfast"],
+      ["hirugohan", "lunch"],
+      ["bangohan", "dinner"],
+    ],
+  },
+  {
+    slug: "n5-places",
+    name: "Places",
+    level: "N5",
+    description: "Everyday places and locations.",
+    words: [
+      ["ie", "house / home"],
+      ["uchi", "home / inside"],
+      ["gakkou", "school"],
+      ["kaisha", "company / office"],
+      ["mise", "shop / store"],
+      ["depaato", "department store"],
+      ["resutoran", "restaurant"],
+      ["ginkou", "bank"],
+      ["yuubinkyoku", "post office"],
+      ["byouin", "hospital"],
+      ["eki", "train station"],
+      ["kuukou", "airport"],
+      ["toshokan", "library"],
+      ["kouen", "park"],
+      ["machi", "town"],
+      ["kuni", "country"],
+      ["heya", "room"],
+      ["toire", "toilet"],
+    ],
+  },
+  {
+    slug: "n5-verbs",
+    name: "Common Verbs",
+    level: "N5",
+    description: "Frequently used N5 verbs in dictionary form.",
+    words: [
+      ["iku", "to go"],
+      ["kuru", "to come"],
+      ["kaeru", "to return"],
+      ["taberu", "to eat"],
+      ["nomu", "to drink"],
+      ["miru", "to see / watch"],
+      ["kiku", "to listen / ask"],
+      ["hanasu", "to speak"],
+      ["yomu", "to read"],
+      ["kaku", "to write"],
+      ["kau", "to buy"],
+      ["suru", "to do"],
+      ["aru", "to exist (objects)"],
+      ["iru", "to exist (people/animals)"],
+      ["neru", "to sleep"],
+      ["okiru", "to wake up"],
+      ["benkyousuru", "to study"],
+      ["wakaru", "to understand"],
+      ["matsu", "to wait"],
+      ["asobu", "to play"],
+    ],
+  },
+  {
+    slug: "n5-adjectives",
+    name: "Common Adjectives",
+    level: "N5",
+    description: "Beginner i- and na-adjectives.",
+    words: [
+      ["ookii", "big"],
+      ["chiisai", "small"],
+      ["atarashii", "new"],
+      ["furui", "old (things)"],
+      ["takai", "tall / expensive"],
+      ["yasui", "cheap"],
+      ["hikui", "low / short"],
+      ["atsui", "hot"],
+      ["samui", "cold (weather)"],
+      ["tsumetai", "cold (touch)"],
+      ["ii", "good"],
+      ["warui", "bad"],
+      ["omoshiroi", "interesting / fun"],
+      ["tsumaranai", "boring"],
+      ["isogashii", "busy"],
+      ["hima", "free (time)"],
+      ["genki", "energetic / well"],
+      ["kirei", "pretty / clean"],
+      ["shizuka", "quiet"],
+      ["nigiyaka", "lively"],
+    ],
+  },
+  {
+    slug: "n5-pronouns-and-people",
+    name: "Pronouns & People",
+    level: "N5",
+    description: "Pronouns and basic words for people.",
+    words: [
+      ["watashi", "I / me"],
+      ["anata", "you"],
+      ["kare", "he"],
+      ["kanojo", "she"],
+      ["watashitachi", "we"],
+      ["minasan", "everyone"],
+      ["sensei", "teacher"],
+      ["gakusei", "student"],
+      ["tomodachi", "friend"],
+      ["hito", "person"],
+      ["otoko", "man"],
+      ["onna", "woman"],
+      ["otokonoko", "boy"],
+      ["onnanoko", "girl"],
+    ],
+  },
+];
+
+export const CATEGORIES: CatalogCategory[] = RAW.map((c) => ({
+  slug: c.slug,
+  name: c.name,
+  level: c.level,
+  description: c.description,
+  words: c.words.map(([romaji, english]) => w(romaji, english)),
+}));
+
+export function getCategoryBySlug(slug: string): CatalogCategory | undefined {
+  return CATEGORIES.find((c) => c.slug === slug);
+}
+
+export function getCategoriesByLevel(level: "N5"): CatalogCategory[] {
+  return CATEGORIES.filter((c) => c.level === level);
+}

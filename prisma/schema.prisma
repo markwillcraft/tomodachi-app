@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// userId fields hold Clerk user IDs (strings like "user_2abc..."). Clerk
+// owns the user record itself; we never store user PII locally beyond the id.
+// If you delete a user in Clerk, hook up a webhook to clean rows here.
+
+model Word {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  romaji    String
+  hiragana  String
+  katakana  String
+  english   String
+  createdAt DateTime @default(now())
+
+  results QuestionResult[]
+
+  @@unique([userId, romaji])
+  @@index([userId])
+}
+
+model QuizAttempt {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  mode      String
+  total     Int
+  correct   Int
+  createdAt DateTime @default(now())
+
+  results QuestionResult[]
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model QuestionResult {
+  id        Int         @id @default(autoincrement())
+  attemptId Int
+  attempt   QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  wordId    Int?
+  word      Word?       @relation(fields: [wordId], references: [id], onDelete: SetNull)
+  kind      String
+  prompt    String
+  correct   String
+  picked    String
+  isCorrect Boolean
+  // Time taken to answer this question, in milliseconds.
+  timeMs    Int?
+  createdAt DateTime    @default(now())
+
+  @@index([wordId])
+}
