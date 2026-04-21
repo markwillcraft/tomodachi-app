@@ -14,25 +14,16 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { N5_KANJI } from "@/lib/kanji";
+import { N5_KANJI, KANJI_SECTIONS } from "@/lib/kanji";
 import { cn } from "@/lib/utils";
 
 const COUNT_OPTIONS = [10, 20, 30, 50];
 
-// Group N5 kanji into the same 10 rows as the MochiMochi chart so users can
-// pick a manageable subset (e.g. just the first 10 numbers).
-const KANJI_GROUPS: { label: string; chars: string[] }[] = [
-  { label: "Numbers 1-10", chars: ["一","二","三","四","五","六","七","八","九","十"] },
-  { label: "Big numbers + nature", chars: ["百","千","万","日","月","火","水","木","金","土"] },
-  { label: "People + study", chars: ["本","語","人","女","男","子","友","国","学","校"] },
-  { label: "Sizes + time", chars: ["小","大","少","多","時","分","年","名","前","後"] },
-  { label: "Geography + directions", chars: ["山","川","花","魚","上","中","下","左","右","外"] },
-  { label: "Weather + shop + life", chars: ["雨","電","天","店","手","古","新","買","生","午"] },
-  { label: "Body + compass", chars: ["口","入","出","長","高","円","北","南","東","西"] },
-  { label: "Eat / drink / senses", chars: ["食","飲","駅","目","見","耳","聞","足","行","来"] },
-  { label: "Society + actions", chars: ["社","休","車","道","空","言","話","読","書","立"] },
-  { label: "Family + everyday", chars: ["母","父","毎","気","白","何","週","間","半","今"] },
-];
+// Reuse the themed sections from the kanji study lib so the quiz setup
+// and the study index stay in sync.
+const KANJI_GROUPS: { label: string; chars: string[] }[] = KANJI_SECTIONS.map(
+  (s) => ({ label: s.title, chars: s.chars }),
+);
 
 export default function KanjiQuizSetupPage() {
   const router = useRouter();

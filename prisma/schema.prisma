@@ -95,3 +95,17 @@ model CardView {
   @@index([userId, createdAt])
   @@index([wordId])
 }
+
+// Logged whenever a user studies a kanji character (plays audio, steps
+// through stroke order, or explicitly marks it as studied). Tracked per
+// character (not per row) since the N5 kanji set is a small, fixed
+// catalog rather than per-user data.
+model KanjiView {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  char      String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, char])
+}

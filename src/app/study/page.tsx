@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { N5_LESSONS } from "@/lib/grammar";
 import { N5_KANJI } from "@/lib/kanji";
 import { getStreak } from "@/lib/streak";
+import { getKanjiProgress } from "@/lib/kanji-progress";
 import { StreakWidget } from "@/components/streak-widget";
 import {
   Card,
@@ -28,10 +29,13 @@ export default async function StudyHubPage() {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
-  const [wordCount, streak] = await Promise.all([
+  const [wordCount, streak, kanjiProgress] = await Promise.all([
     prisma.word.count({ where: { userId } }),
     getStreak(userId),
+    getKanjiProgress(userId),
   ]);
+
+  const kanjiTodayCount = kanjiProgress.viewedToday.size;
 
   return (
     <div className="space-y-10">
@@ -94,12 +98,12 @@ export default async function StudyHubPage() {
                 <Brush className="size-5" />
                 <CardTitle>N5 kanji</CardTitle>
                 <Badge variant="secondary" className="ml-auto">
-                  {N5_KANJI.length} chars
+                  {kanjiTodayCount}/{N5_KANJI.length} today
                 </Badge>
               </div>
               <CardDescription>
-                The full N5 kanji set with on'yomi/kun'yomi audio and animated
-                stroke-by-stroke order.
+                Grouped into 10 themed sections with animated stroke order
+                drawing and on'yomi/kun'yomi audio.
               </CardDescription>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground flex items-center gap-1 group-hover:text-foreground">

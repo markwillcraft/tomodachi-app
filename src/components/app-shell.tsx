@@ -1,8 +1,8 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 import {
   BookOpen,
   GraduationCap,
@@ -15,13 +15,13 @@ import {
   TrendingUp,
   Upload,
   X,
-} from "lucide-react";
-import { SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
-import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { cn } from "@/lib/utils";
+} from "lucide-react"
+import { SignInButton, SignUpButton, UserButton } from "@clerk/nextjs"
+import { Button } from "@/components/ui/button"
+import { ThemeToggle } from "@/components/theme-toggle"
+import { cn } from "@/lib/utils"
 
-type NavItem = { href: string; label: string; icon: React.ReactNode };
+type NavItem = { href: string; label: string; icon: React.ReactNode }
 
 const NAV_ITEMS: NavItem[] = [
   {
@@ -35,7 +35,6 @@ const NAV_ITEMS: NavItem[] = [
     label: "N5 Categories",
     icon: <Layers className="size-4" />,
   },
-  { href: "/import", label: "Import", icon: <Upload className="size-4" /> },
   {
     href: "/quiz",
     label: "Quiz",
@@ -46,53 +45,53 @@ const NAV_ITEMS: NavItem[] = [
     label: "Progress",
     icon: <TrendingUp className="size-4" />,
   },
-];
+]
 
-const COLLAPSED_KEY = "tomodachi_sidebar_collapsed";
+const COLLAPSED_KEY = "tomodachi_sidebar_collapsed"
 
 export function AppShell({
   isSignedIn,
   children,
 }: {
-  isSignedIn: boolean;
-  children: React.ReactNode;
+  isSignedIn: boolean
+  children: React.ReactNode
 }) {
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-  const pathname = usePathname();
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+  const pathname = usePathname()
 
   // Rehydrate the persisted collapse state on mount so desktop users keep
   // their preference across sessions.
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(COLLAPSED_KEY);
-      if (raw === "1") setCollapsed(true);
+      const raw = window.localStorage.getItem(COLLAPSED_KEY)
+      if (raw === "1") setCollapsed(true)
     } catch {
       // ignore storage errors (private mode, etc.)
     }
-  }, []);
+  }, [])
 
   // Persist collapse state whenever it changes.
   useEffect(() => {
     try {
-      window.localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0");
+      window.localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0")
     } catch {
       // ignore
     }
-  }, [collapsed]);
+  }, [collapsed])
 
   useEffect(() => {
-    setDrawerOpen(false);
-  }, [pathname]);
+    setDrawerOpen(false)
+  }, [pathname])
 
   useEffect(() => {
-    if (!drawerOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    if (!drawerOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
     return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [drawerOpen]);
+      document.body.style.overflow = prev
+    }
+  }, [drawerOpen])
 
   if (!isSignedIn) {
     return (
@@ -115,11 +114,11 @@ export function AppShell({
         </header>
         <main className="mx-auto max-w-5xl px-6 py-10">{children}</main>
       </div>
-    );
+    )
   }
 
-  const sidebarWidthClass = collapsed ? "lg:w-16" : "lg:w-64";
-  const mainOffsetClass = collapsed ? "lg:pl-16" : "lg:pl-64";
+  const sidebarWidthClass = collapsed ? "lg:w-16" : "lg:w-64"
+  const mainOffsetClass = collapsed ? "lg:pl-16" : "lg:pl-64"
 
   return (
     <div className="min-h-screen">
@@ -161,7 +160,12 @@ export function AppShell({
         </div>
       </aside>
 
-      <div className={cn("min-h-screen transition-[padding] duration-200", mainOffsetClass)}>
+      <div
+        className={cn(
+          "min-h-screen transition-[padding] duration-200",
+          mainOffsetClass,
+        )}
+      >
         <TopBar
           collapsed={collapsed}
           onToggleSidebar={() => setCollapsed((c) => !c)}
@@ -174,7 +178,7 @@ export function AppShell({
         </main>
       </div>
     </div>
-  );
+  )
 }
 
 function TopBar({
@@ -182,9 +186,9 @@ function TopBar({
   onToggleSidebar,
   onOpenDrawer,
 }: {
-  collapsed: boolean;
-  onToggleSidebar: () => void;
-  onOpenDrawer: () => void;
+  collapsed: boolean
+  onToggleSidebar: () => void
+  onOpenDrawer: () => void
 }) {
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b bg-background/80 px-3 py-2 backdrop-blur sm:px-6 sm:py-3">
@@ -224,7 +228,7 @@ function TopBar({
         <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
       </div>
     </header>
-  );
+  )
 }
 
 function DesktopSidebar({
@@ -232,9 +236,9 @@ function DesktopSidebar({
   collapsed,
   widthClass,
 }: {
-  pathname: string;
-  collapsed: boolean;
-  widthClass: string;
+  pathname: string
+  collapsed: boolean
+  widthClass: string
 }) {
   return (
     <aside
@@ -248,7 +252,7 @@ function DesktopSidebar({
       </div>
       <NavList items={NAV_ITEMS} pathname={pathname} collapsed={collapsed} />
     </aside>
-  );
+  )
 }
 
 function NavList({
@@ -256,15 +260,15 @@ function NavList({
   pathname,
   collapsed,
 }: {
-  items: NavItem[];
-  pathname: string;
-  collapsed: boolean;
+  items: NavItem[]
+  pathname: string
+  collapsed: boolean
 }) {
   return (
     <nav className="flex flex-col gap-1">
       {items.map((item) => {
         const active =
-          pathname === item.href || pathname.startsWith(item.href + "/");
+          pathname === item.href || pathname.startsWith(item.href + "/")
         return (
           <Link
             key={item.href}
@@ -272,9 +276,7 @@ function NavList({
             title={collapsed ? item.label : undefined}
             className={cn(
               "flex items-center rounded-md text-sm transition-colors",
-              collapsed
-                ? "size-10 justify-center"
-                : "gap-2 px-3 py-2",
+              collapsed ? "size-10 justify-center" : "gap-2 px-3 py-2",
               active
                 ? "bg-primary/10 text-foreground font-medium"
                 : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
@@ -283,10 +285,10 @@ function NavList({
             {item.icon}
             {!collapsed && <span>{item.label}</span>}
           </Link>
-        );
+        )
       })}
     </nav>
-  );
+  )
 }
 
 function Logo({
@@ -294,9 +296,9 @@ function Logo({
   compact = false,
   className,
 }: {
-  small?: boolean;
-  compact?: boolean;
-  className?: string;
+  small?: boolean
+  compact?: boolean
+  className?: string
 }) {
   return (
     <Link
@@ -325,5 +327,5 @@ function Logo({
         </span>
       )}
     </Link>
-  );
+  )
 }
