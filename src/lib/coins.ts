@@ -1,4 +1,10 @@
 import { prisma } from "./prisma";
+import {
+  getUserTimezone,
+  localDayKey,
+  localMidnight,
+  nextLocalMidnight,
+} from "./time";
 
 // =====================================================================
 // Coin economy
@@ -6,6 +12,10 @@ import { prisma } from "./prisma";
 // Single source of truth for what every action is worth and what the
 // daily quests require. Tweaking the values here is enough to retune the
 // whole system — every endpoint reads from these constants.
+//
+// Daily rollover happens at the user's *local* midnight (see ./time),
+// which means quest dedup keys and "today's" aggregates are bucketed by
+// IANA timezone, not UTC.
 // =====================================================================
 
 // Per-action rewards (granted on successful completion).
@@ -94,23 +104,11 @@ export type DailyQuest = {
 
 // =====================================================================
 // Helpers
+// ---------------------------------------------------------------------
+// All daily-rollover math is anchored to the user's local timezone,
+// resolved via getUserTimezone() (which falls back to UTC if the user
+// hasn't posted theirs yet — see /api/profile/timezone).
 // =====================================================================
-
-export function utcDayKey(d: Date = new Date()): string {
-  return d.toISOString().slice(0, 10);
-}
-
-export function utcMidnight(d: Date = new Date()): Date {
-  const m = new Date(d);
-  m.setUTCHours(0, 0, 0, 0);
-  return m;
-}
-
-export function nextUtcMidnight(d: Date = new Date()): Date {
-  const m = utcMidnight(d);
-  m.setUTCDate(m.getUTCDate() + 1);
-  return m;
-}
 
 // =====================================================================
 // Ledger writes
@@ -159,7 +157,8 @@ export async function getCoinBalance(userId: string): Promise<number> {
 }
 
 export async function getEarnedToday(userId: string): Promise<number> {
-  const since = utcMidnight();
+  const tz = await getUserTimezone(userId);
+  const since = localMidnight(new Date(), tz);
   const agg = await prisma.coinLedger.aggregate({
     where: { userId, createdAt: { gte: since } },
     _sum: { amount: true },
@@ -170,10 +169,11 @@ export async function getEarnedToday(userId: string): Promise<number> {
 export type CoinSummary = {
   balance: number;
   earnedToday: number;
-  resetsAt: string; // ISO string of next UTC midnight
+  resetsAt: string; // ISO string of the user's next local midnight
 };
 
 export async function getCoinSummary(userId: string): Promise<CoinSummary> {
+  const tz = await getUserTimezone(userId);
   const [balance, earnedToday] = await Promise.all([
     getCoinBalance(userId),
     getEarnedToday(userId),
@@ -181,7 +181,7 @@ export async function getCoinSummary(userId: string): Promise<CoinSummary> {
   return {
     balance,
     earnedToday,
-    resetsAt: nextUtcMidnight().toISOString(),
+    resetsAt: nextLocalMidnight(new Date(), tz).toISOString(),
   };
 }
 
@@ -203,7 +203,8 @@ type QuestProgress = {
 };
 
 async function computeProgress(userId: string): Promise<QuestProgress> {
-  const since = utcMidnight();
+  const tz = await getUserTimezone(userId);
+  const since = localMidnight(new Date(), tz);
   const [attempts, cards] = await Promise.all([
     prisma.quizAttempt.findMany({
       where: { userId, createdAt: { gte: since } },
@@ -271,7 +272,8 @@ function buildQuests(
 }
 
 export async function getDailyQuests(userId: string): Promise<DailyQuest[]> {
-  const day = utcDayKey();
+  const tz = await getUserTimezone(userId);
+  const day = localDayKey(new Date(), tz);
   const [progress, ledger] = await Promise.all([
     computeProgress(userId),
     prisma.coinLedger.findMany({
@@ -290,7 +292,8 @@ export async function getDailyQuests(userId: string): Promise<DailyQuest[]> {
 export async function claimEligibleQuests(
   userId: string,
 ): Promise<Array<{ id: DailyQuestId; reward: number }>> {
-  const day = utcDayKey();
+  const tz = await getUserTimezone(userId);
+  const day = localDayKey(new Date(), tz);
   const quests = await getDailyQuests(userId);
   const newlyClaimed: Array<{ id: DailyQuestId; reward: number }> = [];
   for (const q of quests) {
@@ -385,7 +388,8 @@ export async function awardForCardView(
 ): Promise<CoinAwardSummary> {
   const out: CoinAwardSummary = { earned: 0, reasons: [] };
   // Cap per day: count today's card-view rewards in the ledger.
-  const today = utcMidnight();
+  const tz = await getUserTimezone(userId);
+  const today = localMidnight(new Date(), tz);
   const grantedToday = await prisma.coinLedger.count({
     where: {
       userId,
@@ -412,7 +416,8 @@ export async function awardForKanjiView(
   kanjiViewId: number,
 ): Promise<CoinAwardSummary> {
   const out: CoinAwardSummary = { earned: 0, reasons: [] };
-  const today = utcMidnight();
+  const tz = await getUserTimezone(userId);
+  const today = localMidnight(new Date(), tz);
   const grantedToday = await prisma.coinLedger.count({
     where: {
       userId,
@@ -445,7 +450,8 @@ export async function awardForKanjiView(
 // short-circuits once the ledger catches up to activity count.
 // =====================================================================
 export async function syncTodaysCoins(userId: string): Promise<void> {
-  const since = utcMidnight();
+  const tz = await getUserTimezone(userId);
+  const since = localMidnight(new Date(), tz);
   const [attempts, cards, kanjis, ledgerCount] = await Promise.all([
     prisma.quizAttempt.findMany({
       where: { userId, createdAt: { gte: since } },

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   BookOpen,
   Coins,
@@ -15,7 +15,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ScrollText,
+  Settings,
+  Shield,
   Sparkles,
+  Trophy,
   TrendingUp,
   X,
 } from "lucide-react"
@@ -35,6 +38,7 @@ export type SidebarStreak = {
   cardsDone: number
   cardsGoal: number
   overallPct: number
+  freezesAvailable: number
 }
 
 export type SidebarCoins = {
@@ -68,6 +72,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/progress", label: "Progress", icon: TrendingUp },
+      { href: "/achievements", label: "Achievements", icon: Trophy },
     ],
   },
   {
@@ -94,6 +99,11 @@ const NAV_GROUPS: NavGroup[] = [
       },
     ],
   },
+  {
+    id: "account",
+    label: "Account",
+    items: [{ href: "/settings", label: "Settings", icon: Settings }],
+  },
 ]
 
 const COLLAPSED_KEY = "tomodachi_sidebar_collapsed"
@@ -114,6 +124,7 @@ export function AppShell({
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
+  const router = useRouter()
 
   useEffect(() => {
     try {
@@ -144,6 +155,69 @@ export function AppShell({
       document.body.style.overflow = prev
     }
   }, [drawerOpen])
+
+  // Keep the server's stored timezone in sync with the user's actual
+  // browser timezone. We do a self-healing check: fetch what the server
+  // currently has and only POST when it differs. This handles the case
+  // where an unrelated upsert (e.g. toggling `autoFreezeStreak`) created
+  // a UserProfile row with the default `UTC` and the previous cache-only
+  // sync thought it was already in sync.
+  //
+  // The localStorage cache is still used as an optimization: if we've
+  // already confirmed the server matches within the last day, we skip
+  // the GET. It resets automatically when the browser tz changes.
+  useEffect(() => {
+    if (!isSignedIn) return
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      if (!tz) return
+      const cacheKey = "tomodachi_tz_synced"
+      const now = Date.now()
+      const ONE_DAY = 24 * 60 * 60 * 1000
+      try {
+        const raw = window.localStorage.getItem(cacheKey)
+        if (raw) {
+          const parsed = JSON.parse(raw) as { tz?: string; at?: number }
+          if (parsed.tz === tz && parsed.at && now - parsed.at < ONE_DAY) {
+            return
+          }
+        }
+      } catch {
+        // Malformed cache; fall through and re-sync.
+      }
+
+      void (async () => {
+        try {
+          const res = await fetch("/api/profile/preferences")
+          if (!res.ok) return
+          const prefs = (await res.json().catch(() => null)) as
+            | { timezone?: string }
+            | null
+          if (prefs?.timezone !== tz) {
+            const upd = await fetch("/api/profile/timezone", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ timezone: tz }),
+            })
+            if (!upd.ok) return
+            // Server-stored data changed — force a refresh so daily
+            // countdowns, streak calendar anchor, and quest reset times
+            // all re-render with the correct tz without requiring a
+            // manual reload.
+            router.refresh()
+          }
+          window.localStorage.setItem(
+            cacheKey,
+            JSON.stringify({ tz, at: now }),
+          )
+        } catch {
+          // Network errors are fine — we'll retry next mount.
+        }
+      })()
+    } catch {
+      // Intl unavailable in this environment; nothing to do.
+    }
+  }, [isSignedIn, router])
 
   if (!isSignedIn) {
     return (
@@ -505,7 +579,11 @@ function TodayPanel({
     return (
       <div className="flex justify-center">
         <CollapsedTooltip
-          label={`${streak.current}-day streak · ${streak.overallPct}% today`}
+          label={
+            streak.freezesAvailable > 0
+              ? `${streak.current}-day streak · ${streak.overallPct}% today · ${streak.freezesAvailable} freeze${streak.freezesAvailable === 1 ? "" : "s"}`
+              : `${streak.current}-day streak · ${streak.overallPct}% today`
+          }
         >
           <Link
             href="/study"
@@ -515,6 +593,11 @@ function TodayPanel({
             {streak.current > 0 && (
               <span className="absolute -bottom-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-rose-600 px-1 text-[9px] font-bold text-white shadow ring-2 ring-card tabular-nums">
                 {streak.current}
+              </span>
+            )}
+            {streak.freezesAvailable > 0 && (
+              <span className="absolute -left-1 -top-1 inline-flex size-4 items-center justify-center rounded-full bg-sky-500 text-white shadow ring-2 ring-card">
+                <Shield className="size-2.5" strokeWidth={2.5} />
               </span>
             )}
           </Link>
@@ -579,6 +662,21 @@ function TodayPanel({
           tone="amber"
         />
       </div>
+      {streak.freezesAvailable > 0 && (
+        <div
+          className="mt-3 flex items-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1.5 text-[11px] text-sky-700 dark:text-sky-200"
+          title="Streak freezes auto-save a missed day so your streak stays alive."
+        >
+          <Shield className="size-3.5" strokeWidth={2.25} />
+          <span className="font-medium">
+            {streak.freezesAvailable}{" "}
+            {streak.freezesAvailable === 1 ? "freeze" : "freezes"} ready
+          </span>
+          <span className="ml-auto text-[10px] opacity-70">
+            auto-saves a day
+          </span>
+        </div>
+      )}
     </Link>
   )
 }
@@ -896,9 +994,10 @@ function CollapsedTooltip({
 }) {
   const anchorRef = useRef<HTMLSpanElement | null>(null)
   const [open, setOpen] = useState(false)
-  const [position, setPosition] = useState<{ top: number; left: number } | null>(
-    null,
-  )
+  const [position, setPosition] = useState<{
+    top: number
+    left: number
+  } | null>(null)
 
   const updatePosition = () => {
     const el = anchorRef.current

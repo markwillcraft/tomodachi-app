@@ -10,6 +10,7 @@ import {
   History,
   Loader2,
   Sparkles,
+  Trophy,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { feedback } from "@/lib/feedback";
 import { addPracticeSession } from "@/lib/practice-history";
+import { RedoMissedButton } from "@/components/redo-missed-button";
 
 type Question = {
   id: string;
@@ -40,6 +42,13 @@ type Answer = {
   pickedIndex: number;
   isCorrect: boolean;
   timeMs: number;
+};
+
+type UnlockedAchievement = {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
 };
 
 const LETTERS = ["A", "B", "C", "D"];
@@ -59,6 +68,7 @@ export default function PlayPage() {
   const [finished, setFinished] = useState(false);
   const [tips, setTips] = useState<string[] | null>(null);
   const [tipsLoading, setTipsLoading] = useState(false);
+  const [newlyUnlocked, setNewlyUnlocked] = useState<UnlockedAchievement[]>([]);
 
   // Per-question timer. We capture the timestamp the question rendered and
   // diff against the moment the user picks an answer. In training mode we
@@ -152,7 +162,7 @@ export default function PlayPage() {
       return;
     }
     try {
-      await fetch("/api/quiz/submit", {
+      const res = await fetch("/api/quiz/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -168,6 +178,15 @@ export default function PlayPage() {
           })),
         }),
       });
+      if (res.ok) {
+        const data = (await res.json()) as {
+          newlyUnlocked?: UnlockedAchievement[];
+        };
+        if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
+          setNewlyUnlocked(data.newlyUnlocked);
+          feedback.correct();
+        }
+      }
     } catch {}
     setTipsLoading(true);
     try {
@@ -203,6 +222,7 @@ export default function PlayPage() {
         tips={tips}
         tipsLoading={tipsLoading}
         training={training}
+        newlyUnlocked={newlyUnlocked}
       />
     );
   }
@@ -364,6 +384,7 @@ function ResultsView({
   tips,
   tipsLoading,
   training,
+  newlyUnlocked,
 }: {
   answers: Answer[];
   total: number;
@@ -371,6 +392,7 @@ function ResultsView({
   tips: string[] | null;
   tipsLoading: boolean;
   training: boolean;
+  newlyUnlocked: UnlockedAchievement[];
 }) {
   const pct = total === 0 ? 0 : Math.round((correct / total) * 100);
   const wrong = useMemo(
@@ -433,6 +455,42 @@ function ResultsView({
         </CardContent>
       </Card>
 
+      {!training && newlyUnlocked.length > 0 && (
+        <Card className="border-amber-500/40 bg-gradient-to-br from-amber-500/15 via-card to-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+              <Trophy className="size-4" />
+              {newlyUnlocked.length === 1
+                ? "Achievement unlocked!"
+                : `${newlyUnlocked.length} achievements unlocked!`}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {newlyUnlocked.map((a) => (
+              <div
+                key={a.id}
+                className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3"
+              >
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/20 text-2xl ring-1 ring-inset ring-amber-500/40">
+                  {a.icon}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">{a.title}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {a.description}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div className="sm:col-span-2">
+              <Button asChild variant="outline" size="sm">
+                <Link href="/achievements">View all achievements</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {!training && (
         <Card>
           <CardHeader>
@@ -491,8 +549,15 @@ function ResultsView({
 
       {wrong.length > 0 && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
             <CardTitle>Review missed questions</CardTitle>
+            {!training && (
+              <RedoMissedButton
+                limit={Math.min(20, Math.max(5, wrong.length))}
+                variant="primary"
+                label="Drill these now"
+              />
+            )}
           </CardHeader>
           <CardContent className="space-y-3">
             {wrong.map((a, i) => (

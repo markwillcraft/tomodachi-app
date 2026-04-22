@@ -14,6 +14,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   BookOpen,
+  BrainCircuit,
   Brush,
   Clock,
   Flame,
@@ -44,6 +45,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { RedoMissedButton } from "@/components/redo-missed-button";
+import { ReviewDueButton } from "@/components/review-due-button";
 
 type Stats = {
   summary: {
@@ -92,6 +95,14 @@ type Stats = {
     charsSeen: number;
     charsTotal: number;
   };
+  mastery: {
+    learning: number;
+    reviewing: number;
+    familiar: number;
+    mastered: number;
+    tracked: number;
+  };
+  dueCount: number;
 };
 
 const KANJI_KIND_LABEL: Record<string, string> = {
@@ -157,7 +168,15 @@ export default function ProgressPage() {
     return <p className="text-muted-foreground">No stats available.</p>;
   }
 
-  const { summary, slowestWords, attempts, accuracyByDay, kanjiStats } = stats;
+  const {
+    summary,
+    slowestWords,
+    attempts,
+    accuracyByDay,
+    kanjiStats,
+    mastery,
+    dueCount,
+  } = stats;
   const kanjiAccuracy =
     kanjiStats.totalAnswered === 0
       ? null
@@ -232,6 +251,77 @@ export default function ProgressPage() {
           <StatTile key={s.label} stat={s} />
         ))}
       </section>
+
+      {mastery.tracked > 0 && (
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex size-8 items-center justify-center rounded-lg bg-sky-500/15 text-sky-600 ring-1 ring-inset ring-sky-500/30 dark:text-sky-300">
+                <BrainCircuit className="size-4" />
+              </span>
+              <div>
+                <CardTitle>Mastery progress</CardTitle>
+                <CardDescription>
+                  Spaced repetition buckets across the {mastery.tracked} item
+                  {mastery.tracked === 1 ? "" : "s"} you&apos;ve been quizzed on.
+                </CardDescription>
+              </div>
+            </div>
+            {dueCount > 0 && (
+              <ReviewDueButton
+                limit={Math.min(dueCount, 20)}
+                variant="primary"
+                label={`Review ${Math.min(dueCount, 20)} due`}
+              />
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <MasteryBar buckets={mastery} />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <MasteryTile
+                label="Learning"
+                value={mastery.learning}
+                total={mastery.tracked}
+                tone="rose"
+                hint="Levels 1–2"
+              />
+              <MasteryTile
+                label="Reviewing"
+                value={mastery.reviewing}
+                total={mastery.tracked}
+                tone="amber"
+                hint="Level 3"
+              />
+              <MasteryTile
+                label="Familiar"
+                value={mastery.familiar}
+                total={mastery.tracked}
+                tone="violet"
+                hint="Levels 4–5"
+              />
+              <MasteryTile
+                label="Mastered"
+                value={mastery.mastered}
+                total={mastery.tracked}
+                tone="emerald"
+                hint="Level 6"
+              />
+            </div>
+            {dueCount > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                You have <strong className="text-foreground">{dueCount}</strong>{" "}
+                items due for review. Clearing the queue pushes them further
+                out on the schedule.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Caught up — nothing due right now. New items appear as the
+                review intervals elapse.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="overflow-hidden">
         <CardHeader>
@@ -355,7 +445,7 @@ export default function ProgressPage() {
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
             <div className="flex items-center gap-2">
               <span className="inline-flex size-8 items-center justify-center rounded-lg bg-rose-500/15 text-rose-500 ring-1 ring-inset ring-rose-500/30">
                 <Target className="size-4" />
@@ -365,6 +455,9 @@ export default function ProgressPage() {
                 <CardDescription>Min. 2 attempts each.</CardDescription>
               </div>
             </div>
+            {summary.totalAnswered > 0 && (
+              <RedoMissedButton limit={20} label="Drill last 20" />
+            )}
           </CardHeader>
           <CardContent>
             {summary.weakestWords.length === 0 ? (
@@ -926,6 +1019,95 @@ function KindTile({
       </div>
       <div className="mt-1.5 text-xs text-muted-foreground tabular-nums">
         {total === 0 ? "no data" : `${correct} / ${total}`}
+      </div>
+    </div>
+  );
+}
+
+function MasteryBar({
+  buckets,
+}: {
+  buckets: {
+    learning: number;
+    reviewing: number;
+    familiar: number;
+    mastered: number;
+    tracked: number;
+  };
+}) {
+  const total = Math.max(1, buckets.tracked);
+  const segments = [
+    { key: "learning", value: buckets.learning, className: "bg-rose-500" },
+    { key: "reviewing", value: buckets.reviewing, className: "bg-amber-500" },
+    { key: "familiar", value: buckets.familiar, className: "bg-violet-500" },
+    { key: "mastered", value: buckets.mastered, className: "bg-emerald-500" },
+  ];
+  return (
+    <div className="flex h-3 w-full overflow-hidden rounded-full border bg-muted">
+      {segments.map((s) => {
+        const pct = (s.value / total) * 100;
+        if (pct <= 0) return null;
+        return (
+          <span
+            key={s.key}
+            className={cn("h-full transition-all", s.className)}
+            style={{ width: `${pct}%` }}
+            title={`${s.key}: ${s.value}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function MasteryTile({
+  label,
+  value,
+  total,
+  tone,
+  hint,
+}: {
+  label: string;
+  value: number;
+  total: number;
+  tone: "rose" | "amber" | "violet" | "emerald";
+  hint: string;
+}) {
+  const pct = total === 0 ? 0 : Math.round((value / total) * 100);
+  const TONE: Record<typeof tone, { border: string; text: string; dot: string }> = {
+    rose: {
+      border: "border-rose-500/30 bg-rose-500/5",
+      text: "text-rose-700 dark:text-rose-300",
+      dot: "bg-rose-500",
+    },
+    amber: {
+      border: "border-amber-500/30 bg-amber-500/5",
+      text: "text-amber-700 dark:text-amber-300",
+      dot: "bg-amber-500",
+    },
+    violet: {
+      border: "border-violet-500/30 bg-violet-500/5",
+      text: "text-violet-700 dark:text-violet-300",
+      dot: "bg-violet-500",
+    },
+    emerald: {
+      border: "border-emerald-500/30 bg-emerald-500/5",
+      text: "text-emerald-700 dark:text-emerald-300",
+      dot: "bg-emerald-500",
+    },
+  };
+  const t = TONE[tone];
+  return (
+    <div className={cn("rounded-xl border p-3", t.border)}>
+      <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <span className={cn("size-2 rounded-full", t.dot)} />
+        {label}
+      </div>
+      <div className={cn("mt-1.5 text-2xl font-bold tabular-nums", t.text)}>
+        {value}
+      </div>
+      <div className="text-[11px] text-muted-foreground tabular-nums">
+        {hint} · {pct}%
       </div>
     </div>
   );

@@ -14,6 +14,8 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { getStreak } from "@/lib/streak";
 import { DAILY_QUIZ_GOAL, DAILY_CARD_GOAL } from "@/lib/streak";
 import { getCoinSummary, syncTodaysCoins } from "@/lib/coins";
+import { reconcileStreakFreezes } from "@/lib/streak-freeze";
+import { evaluateAchievements } from "@/lib/achievements";
 
 export const metadata: Metadata = {
   title: "Tomodachi — Japanese study buddy",
@@ -48,11 +50,22 @@ export default async function RootLayout({
       // Reconcile today's activity against the coin ledger before we read
       // the summary. After the first reconciliation of the day this is a
       // cheap short-circuit (a few counts + a no-op quest claim check).
-      await syncTodaysCoins(userId);
+      // The streak-freeze reconcile grants this week's freeze (if due)
+      // and auto-consumes freezes against yesterday's failures before
+      // getStreak() runs.
+      await Promise.all([
+        syncTodaysCoins(userId),
+        reconcileStreakFreezes(userId),
+      ]);
       const [s, c] = await Promise.all([
         getStreak(userId),
         getCoinSummary(userId),
       ]);
+      // Fire-and-forget achievement eval. We don't block the page on it
+      // and we don't surface the unlocks here — the /achievements page
+      // is the canonical list and the quiz results screen shows toasts
+      // for fresh unlocks earned in that session.
+      evaluateAchievements(userId).catch(() => {});
       const quizPct = Math.min(
         100,
         Math.round((s.today.quizAnswered / DAILY_QUIZ_GOAL) * 100),
@@ -69,6 +82,7 @@ export default async function RootLayout({
         cardsDone: s.today.cardsViewed,
         cardsGoal: DAILY_CARD_GOAL,
         overallPct: Math.round((quizPct + cardsPct) / 2),
+        freezesAvailable: s.freezesAvailable,
       };
       coins = { balance: c.balance, earnedToday: c.earnedToday };
     } catch {

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import {
   ArrowRight,
   BookOpen,
+  BrainCircuit,
   Brush,
   Flame,
   GraduationCap,
@@ -19,7 +20,10 @@ import { N5_LESSONS } from "@/lib/grammar";
 import { N5_KANJI } from "@/lib/kanji";
 import { getStreak } from "@/lib/streak";
 import { getKanjiProgress } from "@/lib/kanji-progress";
+import { getDueCount, getMasteryBuckets } from "@/lib/srs";
+import { getUserPreferences } from "@/lib/time";
 import { StreakWidget } from "@/components/streak-widget";
+import { ReviewDueButton } from "@/components/review-due-button";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -28,11 +32,15 @@ export default async function StudyHubPage() {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
-  const [wordCount, streak, kanjiProgress] = await Promise.all([
-    prisma.word.count({ where: { userId } }),
-    getStreak(userId),
-    getKanjiProgress(userId),
-  ]);
+  const [wordCount, streak, kanjiProgress, dueCount, mastery, prefs] =
+    await Promise.all([
+      prisma.word.count({ where: { userId } }),
+      getStreak(userId),
+      getKanjiProgress(userId),
+      getDueCount(userId),
+      getMasteryBuckets(userId),
+      getUserPreferences(userId),
+    ]);
 
   const kanjiTodayCount = kanjiProgress.viewedToday.size;
 
@@ -169,7 +177,70 @@ export default async function StudyHubPage() {
         </div>
       </section>
 
-      <StreakWidget {...streak} />
+      <StreakWidget {...streak} autoFreezeStreak={prefs.autoFreezeStreak} />
+
+      {mastery.tracked > 0 && (
+        <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-background to-background p-5 shadow-sm sm:p-6">
+          <div
+            aria-hidden
+            className="jp pointer-events-none absolute -right-4 -top-8 select-none text-[8rem] font-bold leading-none text-sky-500/5 sm:text-[12rem]"
+          >
+            復
+          </div>
+          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="inline-flex size-10 items-center justify-center rounded-xl bg-sky-500/15 text-sky-600 ring-1 ring-inset ring-sky-500/30 dark:text-sky-300">
+                <BrainCircuit className="size-5" />
+              </span>
+              <div className="space-y-1">
+                <div className="text-xs font-semibold uppercase tracking-wider text-sky-600/80 dark:text-sky-300/80">
+                  Spaced review
+                </div>
+                <h3 className="text-lg font-semibold tracking-tight">
+                  {dueCount === 0
+                    ? "You're caught up"
+                    : `${dueCount} item${dueCount === 1 ? "" : "s"} due for review`}
+                </h3>
+                <p className="max-w-xl text-sm text-muted-foreground">
+                  {dueCount === 0
+                    ? "New items unlock as you keep quizzing. Come back after a few quizzes."
+                    : "A short review session brings these items forward in your memory. Each correct answer pushes them out further; misses reset the clock."}
+                </p>
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
+                  <MasteryChip
+                    label="Learning"
+                    value={mastery.learning}
+                    tone="rose"
+                  />
+                  <MasteryChip
+                    label="Reviewing"
+                    value={mastery.reviewing}
+                    tone="amber"
+                  />
+                  <MasteryChip
+                    label="Familiar"
+                    value={mastery.familiar}
+                    tone="violet"
+                  />
+                  <MasteryChip
+                    label="Mastered"
+                    value={mastery.mastered}
+                    tone="emerald"
+                  />
+                </div>
+              </div>
+            </div>
+            {dueCount > 0 && (
+              <ReviewDueButton
+                limit={Math.min(dueCount, 20)}
+                variant="primary"
+                label={`Review ${Math.min(dueCount, 20)} now`}
+                className="self-start sm:self-center"
+              />
+            )}
+          </div>
+        </section>
+      )}
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {cards.map((c) => (
@@ -185,7 +256,8 @@ export default async function StudyHubPage() {
           <strong className="text-foreground">How the streak works:</strong> a
           day counts when you both (1) take quizzes totalling at least 50
           questions and (2) view at least 50 vocab cards in Study. Days reset
-          at midnight UTC.
+          at your local midnight. Missed a day? A streak freeze auto-saves it —
+          you earn one per week, up to two stored.
         </div>
       </section>
     </div>
@@ -208,6 +280,38 @@ type StudyCard = {
     kanji: string;
   };
 };
+
+function MasteryChip({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "rose" | "amber" | "violet" | "emerald";
+}) {
+  const TONE: Record<typeof tone, string> = {
+    rose: "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30",
+    amber:
+      "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
+    violet:
+      "bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30",
+    emerald:
+      "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium tabular-nums",
+        TONE[tone],
+      )}
+    >
+      {label}
+      <span className="opacity-70">·</span>
+      <span>{value}</span>
+    </span>
+  );
+}
 
 function StudyHubCard({ card }: { card: StudyCard }) {
   const Icon = card.icon;

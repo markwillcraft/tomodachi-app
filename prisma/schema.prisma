@@ -110,12 +110,102 @@ model KanjiView {
   @@index([userId, char])
 }
 
+// Cached per-user profile. Today this only holds the user's IANA timezone
+// so daily-rollover features (streak, daily quests, "today's earnings")
+// happen at the user's local midnight instead of UTC. The client posts
+// `Intl.DateTimeFormat().resolvedOptions().timeZone` on first load and we
+// upsert here. Falls back to "UTC" when missing.
+model UserProfile {
+  userId    String   @id
+  timezone  String   @default("UTC")
+  // When true (default), reconcileStreakFreezes() spends freezes
+  // automatically on yesterday's miss so the streak survives without
+  // user input. When false, freezes accrue as inventory and the user
+  // burns them manually from the streak calendar.
+  autoFreezeStreak Boolean @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+// A streak "freeze" — protection that auto-covers one incomplete day so
+// the user's streak survives a missed day without manual intervention.
+// Freezes are granted once per ISO week (capped at MAX_STORED_FREEZES
+// unclaimed per user). When a prior day fails the daily goal, we consume
+// one freeze (stamp `consumedFor = "YYYY-MM-DD"` local day key) and
+// getStreak() treats that day as completed.
+//
+// The (userId, grantKey) unique ensures each weekly grant lands at most
+// once. The (userId, consumedFor) unique prevents us from burning two
+// freezes on the same day (Postgres treats NULLs as distinct, so
+// multiple unclaimed rows per user are fine).
+model StreakFreeze {
+  id          Int       @id @default(autoincrement())
+  userId      String
+  // "weekly_grant" today; future: "shop", "achievement".
+  source      String
+  // Stable dedup key for grants. Weekly grants use
+  // "weekly:<ISO-year>-W<ISO-week>:<tz>". Non-weekly grants use a
+  // source-specific key (e.g. "shop:<purchaseId>").
+  grantKey    String
+  // Local day key "YYYY-MM-DD" the freeze was spent on. NULL while the
+  // freeze is still sitting in the user's inventory.
+  consumedFor String?
+  grantedAt   DateTime  @default(now())
+  consumedAt  DateTime?
+
+  @@unique([userId, grantKey])
+  @@unique([userId, consumedFor])
+  @@index([userId, consumedFor])
+}
+
+// Spaced-repetition scheduling for a single study item (a vocab word, a
+// kanji character, or a kana character). We upsert one row per
+// (user, type, key) and advance the level on each quiz answer. Reviews
+// become "due" when nextReviewAt <= now().
+//
+// Levels → intervals are defined in src/lib/srs.ts. A correct answer
+// advances one level (until 6 = mastered); a wrong answer resets to
+// level 1 so the user sees it again soon.
+model ReviewState {
+  id             Int       @id @default(autoincrement())
+  userId         String
+  // "vocab" | "kanji" | "kana". Keeps the index small and lets us filter
+  // "due vocab" vs "due kanji" without scanning.
+  itemType       String
+  // Word id (stringified), kanji char, or kana char. Stable per item.
+  itemKey        String
+  level          Int       @default(1)
+  correctStreak  Int       @default(0)
+  totalCorrect   Int       @default(0)
+  totalSeen      Int       @default(0)
+  nextReviewAt   DateTime  @default(now())
+  lastReviewedAt DateTime?
+
+  @@unique([userId, itemType, itemKey])
+  @@index([userId, nextReviewAt])
+  @@index([userId, itemType, level])
+}
+
+// One-time milestone unlocks. The catalog (id + metadata) lives in code
+// (src/lib/achievements.ts); this table just records which of those
+// the user has claimed. The unique constraint makes re-evaluation
+// idempotent — we can call evaluateAchievements from any surface and
+// duplicates are silently dropped.
+model Achievement {
+  id            Int      @id @default(autoincrement())
+  userId        String
+  achievementId String
+  unlockedAt    DateTime @default(now())
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+}
+
 // Append-only ledger of every coin grant (and, eventually, spend). The
 // dedupKey is the deduplication contract: e.g. "quiz:<attemptId>" awards
 // quiz coins exactly once even if /api/quiz/submit is retried, and
-// "quest:<utcDate>:<questId>" lets us claim a daily quest reward at most
-// once per day. Balance = sum(amount). Today's earnings = sum where
-// createdAt >= utc-midnight.
+// "quest:<localDay>:<questId>" lets us claim a daily quest reward at most
+// once per local day. Balance = sum(amount). Today's earnings = sum where
+// createdAt >= local-midnight.
 model CoinLedger {
   id        Int      @id @default(autoincrement())
   userId    String

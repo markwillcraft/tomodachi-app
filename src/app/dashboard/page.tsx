@@ -16,9 +16,13 @@ import { auth, currentUser } from "@clerk/nextjs/server"
 import { prisma } from "@/lib/prisma"
 import { getStreak } from "@/lib/streak"
 import { getCoinSummary, getDailyQuests } from "@/lib/coins"
+import { getUserPreferences } from "@/lib/time"
 import { StreakWidget } from "@/components/streak-widget"
 import { DailyQuests } from "@/components/daily-quests"
-import { DashboardGreeting, DashboardMetaTime } from "@/components/dashboard-time"
+import {
+  DashboardGreeting,
+  DashboardMetaTime,
+} from "@/components/dashboard-time"
 import { cn } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -29,7 +33,7 @@ export default async function DashboardPage() {
 
   const user = await currentUser()
 
-  const [wordCount, recentAttempts, streak, quests, coinSummary] =
+  const [wordCount, recentAttempts, streak, quests, coinSummary, prefs] =
     await Promise.all([
       prisma.word.count({ where: { userId } }),
       prisma.quizAttempt.findMany({
@@ -40,6 +44,7 @@ export default async function DashboardPage() {
       getStreak(userId),
       getDailyQuests(userId),
       getCoinSummary(userId),
+      getUserPreferences(userId),
     ])
   const totalAnswered = recentAttempts.reduce((s, a) => s + a.total, 0)
   const totalCorrect = recentAttempts.reduce((s, a) => s + a.correct, 0)
@@ -221,7 +226,7 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      <StreakWidget {...streak} />
+      <StreakWidget {...streak} autoFreezeStreak={prefs.autoFreezeStreak} />
 
       <DailyQuests
         quests={quests}

@@ -7,6 +7,7 @@ import {
   Flame,
   Languages,
   Play,
+  RotateCcw,
   Sparkles,
   Target,
   TrendingUp,
@@ -18,6 +19,7 @@ import { N5_KANJI } from "@/lib/kanji";
 import { HIRAGANA, KATAKANA } from "@/lib/kana";
 import { cn } from "@/lib/utils";
 import { PracticeHistoryCard } from "@/components/practice-history-card";
+import { RedoMissedButton } from "@/components/redo-missed-button";
 
 export const dynamic = "force-dynamic";
 
@@ -25,13 +27,18 @@ export default async function QuizHubPage() {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
-  const [wordCount, attemptCount, lastAttempt] = await Promise.all([
+  const [wordCount, attemptCount, lastAttempt, missedCount] = await Promise.all([
     prisma.word.count({ where: { userId } }),
     prisma.quizAttempt.count({ where: { userId } }),
     prisma.quizAttempt.findFirst({
       where: { userId },
       orderBy: { createdAt: "desc" },
       select: { createdAt: true, mode: true, correct: true, total: true },
+    }),
+    // Total wrong answers across all attempts — drives whether we surface
+    // the "Redo missed" entry point and what number to show on the chip.
+    prisma.questionResult.count({
+      where: { attempt: { userId }, isCorrect: false },
     }),
   ]);
 
@@ -130,6 +137,43 @@ export default async function QuizHubPage() {
           ))}
         </div>
       </section>
+
+      {missedCount >= 5 && (
+        <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-rose-500/10 via-background to-background p-5 shadow-sm sm:p-6">
+          <div
+            aria-hidden
+            className="jp pointer-events-none absolute -right-4 -top-8 select-none text-[8rem] font-bold leading-none text-rose-500/5 sm:text-[12rem]"
+          >
+            復
+          </div>
+          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="inline-flex size-10 items-center justify-center rounded-xl bg-rose-500/15 text-rose-600 ring-1 ring-inset ring-rose-500/30 dark:text-rose-300">
+                <RotateCcw className="size-5" />
+              </span>
+              <div className="space-y-1">
+                <div className="text-xs font-semibold uppercase tracking-wider text-rose-600/80 dark:text-rose-300/80">
+                  Targeted review
+                </div>
+                <h3 className="text-lg font-semibold tracking-tight">
+                  Drill your missed questions
+                </h3>
+                <p className="max-w-xl text-sm text-muted-foreground">
+                  20 fresh questions built from your most recent wrong
+                  answers. Counts toward your streak and earns coins like
+                  any other quiz.
+                </p>
+              </div>
+            </div>
+            <RedoMissedButton
+              limit={20}
+              variant="primary"
+              label="Start review"
+              className="self-start sm:self-center"
+            />
+          </div>
+        </section>
+      )}
 
       <PracticeHistoryCard />
 

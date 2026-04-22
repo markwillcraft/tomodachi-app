@@ -8,7 +8,7 @@ import type { DailyQuest } from "@/lib/coins";
 type Props = {
   quests: DailyQuest[];
   earnedToday: number;
-  resetsAt: string; // ISO string of next UTC midnight
+  resetsAt: string; // ISO string of the user's next local midnight
 };
 
 export function DailyQuests({ quests, earnedToday, resetsAt }: Props) {

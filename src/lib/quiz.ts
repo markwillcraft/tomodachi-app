@@ -62,7 +62,7 @@ function weightedSample(weighted: WeightedWord[]): Word {
   return weighted[weighted.length - 1].word;
 }
 
-function buildVocabQuestion(
+export function buildVocabQuestion(
   word: Word,
   pool: Word[],
   forcedKind?: "kana_to_romaji" | "romaji_to_english" | "romaji_to_kana",
@@ -124,14 +124,18 @@ function buildVocabQuestion(
   };
 }
 
-function buildKanaQuestion(
+export function buildKanaQuestion(
   table: KanaPair[],
   kind: "hiragana_char" | "katakana_char",
   // Pool of distractors. Defaults to the same table the prompt comes from
   // but the kana quiz UI may pass a richer pool spanning hiragana+katakana.
   distractorPool?: KanaPair[],
+  // Optional explicit target. When provided, we don't pick at random; the
+  // "redo missed" flow uses this so it can drill the *exact* kana the
+  // user got wrong before.
+  forcedTarget?: KanaPair,
 ): Question {
-  const target = pickRandom(table);
+  const target = forcedTarget ?? pickRandom(table);
   const correct = target.romaji;
   const pool = distractorPool ?? table;
   const distractors = uniqueChoices(
@@ -148,7 +152,7 @@ function buildKanaQuestion(
   };
 }
 
-function buildKanjiQuestion(
+export function buildKanjiQuestion(
   target: Kanji,
   pool: Kanji[],
   forcedKind?: "kanji_to_meaning" | "meaning_to_kanji" | "kanji_to_reading",

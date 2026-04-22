@@ -57,6 +57,24 @@ export function StudyCardDeck({
   const total = words.length;
   const current: StudyWord | undefined = words[index];
 
+  // ----- Swipe / drag gesture state -----------------------------------
+  // We let users swipe the card horizontally on touch (and click-drag on
+  // desktop) to navigate, mimicking Anki / Tinder. Vertical motion is
+  // ignored so the page can still scroll. We track the gesture in a
+  // ref so the live transform doesn't trigger React re-renders on
+  // every pointer move; only the final commit / cancel sets state.
+  const swipeRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    pointerId: number | null;
+    locked: "h" | "v" | null;
+  }>({ active: false, startX: 0, startY: 0, pointerId: null, locked: null });
+  const [dragX, setDragX] = useState(0);
+  const [committing, setCommitting] = useState<"left" | "right" | null>(null);
+  const SWIPE_COMMIT_PX = 90;
+  const SWIPE_AXIS_LOCK_PX = 8;
+
   // Detect if the user has any Japanese voice installed. We don't block
   // anything — just surface a one-time hint so they understand why the
   // audio sounds wrong if they're on a system with no Japanese TTS pack.
@@ -139,6 +157,96 @@ export function StudyCardDeck({
     }
   }
 
+  // ----- Pointer handlers for swipe nav -------------------------------
+  // Pointer events unify mouse/touch/stylus. We capture the pointer
+  // once we're sure the gesture is horizontal so the browser doesn't
+  // hijack it for scrolling, but we *don't* preventDefault until that
+  // axis lock so vertical scroll still works inside the card region.
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if (editing) return;
+    // Don't start a swipe from interactive children (audio / edit
+    // buttons set their own stopPropagation, but be defensive).
+    if (e.button !== undefined && e.button !== 0) return;
+    swipeRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      pointerId: e.pointerId,
+      locked: null,
+    };
+    setDragX(0);
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    const s = swipeRef.current;
+    if (!s.active || s.pointerId !== e.pointerId) return;
+    const dx = e.clientX - s.startX;
+    const dy = e.clientY - s.startY;
+    if (s.locked === null) {
+      const adx = Math.abs(dx);
+      const ady = Math.abs(dy);
+      // Wait until the user has clearly moved before deciding the axis
+      // — otherwise tiny tap jitters lock to horizontal and prevent
+      // the click from registering as a flip.
+      if (adx < SWIPE_AXIS_LOCK_PX && ady < SWIPE_AXIS_LOCK_PX) return;
+      s.locked = adx > ady ? "h" : "v";
+      if (s.locked === "h") {
+        // Capture so we keep getting move/up events even if the
+        // pointer leaves the card bounds mid-swipe.
+        try {
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        } catch {}
+      }
+    }
+    if (s.locked === "h") {
+      // Add resistance at edges so it's clear there's nowhere to go.
+      let damped = dx;
+      if ((dx < 0 && index + 1 >= total) || (dx > 0 && index <= 0)) {
+        damped = dx * 0.35;
+      }
+      setDragX(damped);
+    }
+  }
+
+  function endSwipe(e: React.PointerEvent<HTMLDivElement>) {
+    const s = swipeRef.current;
+    if (!s.active || s.pointerId !== e.pointerId) return;
+    const wasHorizontal = s.locked === "h";
+    const dx = dragX;
+    swipeRef.current = {
+      active: false,
+      startX: 0,
+      startY: 0,
+      pointerId: null,
+      locked: null,
+    };
+    if (!wasHorizontal) {
+      // Vertical / no-lock end: nothing to do — let click/flip fire.
+      return;
+    }
+    // Horizontal release: commit if past threshold, otherwise spring back.
+    if (dx <= -SWIPE_COMMIT_PX && index + 1 < total) {
+      setCommitting("left");
+      // Slide the card off-screen, then advance on next tick so the
+      // new card animates in from the dragX=0 position.
+      window.setTimeout(() => {
+        next();
+        setCommitting(null);
+        setDragX(0);
+      }, 160);
+    } else if (dx >= SWIPE_COMMIT_PX && index > 0) {
+      setCommitting("right");
+      window.setTimeout(() => {
+        prev();
+        setCommitting(null);
+        setDragX(0);
+      }, 160);
+    } else {
+      // Snap back.
+      setDragX(0);
+    }
+  }
+
   function flip() {
     if (editing) return;
     setFlipped((f) => !f);
@@ -212,7 +320,18 @@ export function StudyCardDeck({
       <div
         role="button"
         tabIndex={0}
-        onClick={flip}
+        onClick={(e) => {
+          // Suppress click->flip if this was the tail end of a swipe.
+          if (committing !== null) {
+            e.preventDefault();
+            return;
+          }
+          if (Math.abs(dragX) > 6) {
+            e.preventDefault();
+            return;
+          }
+          flip();
+        }}
         onKeyDown={(e) => {
           if (editing) return;
           if (e.key === "Enter" || e.key === " ") {
@@ -220,9 +339,26 @@ export function StudyCardDeck({
             flip();
           }
         }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endSwipe}
+        onPointerCancel={endSwipe}
+        style={{
+          transform: committing
+            ? `translateX(${committing === "left" ? "-120%" : "120%"}) rotate(${committing === "left" ? -8 : 8}deg)`
+            : `translateX(${dragX}px) rotate(${dragX * 0.04}deg)`,
+          transition:
+            committing !== null
+              ? "transform 160ms ease-out, opacity 160ms ease-out"
+              : swipeRef.current.active
+                ? "none"
+                : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+          opacity: committing !== null ? 0 : 1,
+          touchAction: "pan-y",
+        }}
         className={cn(
-          "group relative mx-auto flex min-h-[320px] w-full max-w-2xl select-none flex-col items-center justify-center rounded-2xl border-2 p-10 text-center shadow-sm transition-all",
-          editing ? "cursor-default" : "cursor-pointer",
+          "group relative mx-auto flex min-h-[320px] w-full max-w-2xl select-none flex-col items-center justify-center rounded-2xl border-2 p-10 text-center shadow-sm",
+          editing ? "cursor-default" : "cursor-grab active:cursor-grabbing",
           flipped
             ? "border-primary/40 bg-gradient-to-br from-primary/5 to-accent/30"
             : "border-border bg-card hover:border-primary/40",
@@ -332,6 +468,43 @@ export function StudyCardDeck({
             </Button>
           </div>
         )}
+
+        {/* Swipe direction badges. They fade in proportionally to drag
+            distance and pulse to "ready" once the user has crossed the
+            commit threshold. Pointer-events:none so they never steal
+            taps from the underlying card. */}
+        {!editing && (
+          <>
+            <div
+              aria-hidden
+              className={cn(
+                "pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 rounded-full border px-3 py-1 text-xs font-semibold transition-all",
+                dragX >= SWIPE_COMMIT_PX
+                  ? "border-primary bg-primary text-primary-foreground scale-110"
+                  : "border-border bg-background/80 text-muted-foreground",
+              )}
+              style={{
+                opacity: Math.max(0, Math.min(1, dragX / SWIPE_COMMIT_PX)),
+              }}
+            >
+              ← Prev
+            </div>
+            <div
+              aria-hidden
+              className={cn(
+                "pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 rounded-full border px-3 py-1 text-xs font-semibold transition-all",
+                dragX <= -SWIPE_COMMIT_PX
+                  ? "border-primary bg-primary text-primary-foreground scale-110"
+                  : "border-border bg-background/80 text-muted-foreground",
+              )}
+              style={{
+                opacity: Math.max(0, Math.min(1, -dragX / SWIPE_COMMIT_PX)),
+              }}
+            >
+              Next →
+            </div>
+          </>
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-3">
@@ -355,8 +528,8 @@ export function StudyCardDeck({
       </div>
 
       <p className="text-center text-xs text-muted-foreground">
-        Shortcuts: ← / → to navigate, space to flip, P to play audio · Pencil
-        icon to fix wrong romaji
+        Swipe the card left / right to navigate (or use ← / →). Tap or press
+        space to flip, P to play audio · Pencil icon to fix wrong romaji.
       </p>
     </div>
   );

@@ -1,10 +1,12 @@
-import { Volume2, Pencil, Trophy, CalendarRange } from "lucide-react";
+import Link from "next/link";
+import { Volume2, Pencil, Trophy, CalendarRange, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   type DailyProgress,
   DAILY_CARD_GOAL,
   DAILY_QUIZ_GOAL,
 } from "@/lib/streak";
+import { FreezeCellButton } from "@/components/freeze-cell-button";
 
 const WEEKDAY_SHORT = ["S", "M", "T", "W", "T", "F", "S"];
 const RANGE_DAYS = 14;
@@ -54,11 +56,18 @@ export function StreakWidget({
   longest,
   today,
   last30,
+  freezesAvailable = 0,
+  autoFreezeStreak = true,
 }: {
   current: number;
   longest: number;
   today: DailyProgress;
   last30: DailyProgress[];
+  freezesAvailable?: number;
+  // When false, eligible missed days render a "Use freeze" button that
+  // lets the user manually spend a credit from inventory. When true,
+  // freezes apply silently on reconcile and cells stay read-only.
+  autoFreezeStreak?: boolean;
 }) {
   const quizPct = Math.min(
     100,
@@ -97,6 +106,30 @@ export function StreakWidget({
             todayDone={today.completed}
             overallPct={overallPct}
           />
+          {freezesAvailable > 0 && (
+            <Link
+              href="/settings"
+              className="group inline-flex items-start gap-2 self-start rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-left text-xs text-sky-700 backdrop-blur-sm transition-colors hover:bg-sky-500/15 dark:text-sky-200"
+              title={
+                autoFreezeStreak
+                  ? "Auto-applied. Earn 1 freeze per ISO week, up to 2 stored. Click to manage."
+                  : "Manual mode. Click a missed day in the calendar below to spend a freeze."
+              }
+            >
+              <Shield className="mt-0.5 size-4 shrink-0" strokeWidth={2.25} />
+              <div>
+                <div className="text-sm font-semibold tabular-nums">
+                  {freezesAvailable} streak freeze
+                  {freezesAvailable === 1 ? "" : "s"}
+                </div>
+                <div className="text-[11px] opacity-80">
+                  {autoFreezeStreak
+                    ? "Auto-saves a missed day — 1 / week."
+                    : "Tap a missed day below to spend one."}
+                </div>
+              </div>
+            </Link>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -152,7 +185,12 @@ export function StreakWidget({
               </div>
             </div>
 
-            <CalendarGrid cells={calendar} todayKey={todayKey} />
+            <CalendarGrid
+              cells={calendar}
+              todayKey={todayKey}
+              freezesAvailable={freezesAvailable}
+              allowManualFreeze={!autoFreezeStreak}
+            />
           </div>
         </div>
       </div>
@@ -380,16 +418,42 @@ function Goal({
 function CalendarGrid({
   cells,
   todayKey,
+  freezesAvailable,
+  allowManualFreeze,
 }: {
   cells: CalendarCellData[];
   todayKey: string | undefined;
+  freezesAvailable: number;
+  allowManualFreeze: boolean;
 }) {
   if (cells.length === 0) return null;
   return (
     <div className="grid grid-cols-7 gap-1.5">
-      {cells.map((c) => (
-        <CalendarCell key={c.day} cell={c} isToday={c.day === todayKey} />
-      ))}
+      {cells.map((c) => {
+        const isComplete = c.data?.completed ?? false;
+        const isFrozen = c.data?.frozen ?? false;
+        const isTodayCell = c.day === todayKey;
+        // Eligible = a real, past day that missed its goal and isn't
+        // already frozen. We don't try to enforce the 30-day lookback
+        // here because the calendar window is already capped at
+        // RANGE_DAYS (14).
+        const canFreeze =
+          allowManualFreeze &&
+          freezesAvailable > 0 &&
+          !c.isFuture &&
+          !isTodayCell &&
+          !isComplete &&
+          !isFrozen;
+        return (
+          <CalendarCell
+            key={c.day}
+            cell={c}
+            isToday={isTodayCell}
+            canFreeze={canFreeze}
+            freezesRemaining={freezesAvailable}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -397,21 +461,30 @@ function CalendarGrid({
 function CalendarCell({
   cell,
   isToday,
+  canFreeze,
+  freezesRemaining,
 }: {
   cell: CalendarCellData;
   isToday: boolean;
+  canFreeze: boolean;
+  freezesRemaining: number;
 }) {
   const dt = new Date(cell.day + "T00:00:00Z");
   const dayNum = dt.getUTCDate();
   const weekday = WEEKDAY_SHORT[dt.getUTCDay()];
   const intensity = cell.data ? cellIntensity(cell.data) : 0;
   const isComplete = cell.data?.completed ?? false;
+  const isFrozen = cell.data?.frozen ?? false;
   const isFuture = cell.isFuture;
-  const isEmpty = !isFuture && intensity === 0;
+  const isEmpty = !isFuture && intensity === 0 && !isFrozen;
 
   const title = cell.data
     ? `${cell.day}: ${cell.data.quizAnswered} / ${DAILY_QUIZ_GOAL} quiz · ${cell.data.cardsViewed} / ${DAILY_CARD_GOAL} cards${
-        isComplete ? " — complete ✓" : ` — ${intensity}% effort`
+        isComplete
+          ? " — complete ✓"
+          : isFrozen
+            ? " — saved by streak freeze"
+            : ` — ${intensity}% effort`
       }`
     : `${cell.day}${isFuture ? " — upcoming" : " — no activity"}`;
 
@@ -424,9 +497,11 @@ function CalendarCell({
           ? "border-dashed border-border/60 bg-transparent"
           : isComplete
             ? "border-emerald-500/40 bg-emerald-500/5 dark:border-emerald-400/40 dark:bg-emerald-500/10"
-            : intensity > 0
-              ? "border-orange-400/40 bg-orange-500/5 dark:border-orange-400/40 dark:bg-orange-500/10"
-              : "border-border/70 bg-muted/40",
+            : isFrozen
+              ? "border-sky-500/40 bg-sky-500/5 dark:border-sky-400/40 dark:bg-sky-500/10"
+              : intensity > 0
+                ? "border-orange-400/40 bg-orange-500/5 dark:border-orange-400/40 dark:bg-orange-500/10"
+                : "border-border/70 bg-muted/40",
         isToday &&
           "ring-2 ring-orange-500 ring-offset-1 ring-offset-background",
       )}
@@ -434,17 +509,21 @@ function CalendarCell({
       {/* Vertical fill bar — the "bucket" rises from the cell floor in
           proportion to the day's effort, capped a hair below the date so
           the labels stay legible even at 100%. Goal-complete days flip
-          to emerald so success reads instantly. */}
-      {!isFuture && intensity > 0 && (
+          to emerald; frozen-and-saved days get a sky-blue wash. */}
+      {!isFuture && (intensity > 0 || isFrozen) && (
         <span
           aria-hidden
           className={cn(
             "absolute inset-x-0 bottom-0 transition-[height] duration-500",
             isComplete
               ? "bg-gradient-to-t from-emerald-500 to-emerald-400"
-              : "bg-gradient-to-t from-orange-500 to-orange-300",
+              : isFrozen
+                ? "bg-gradient-to-t from-sky-500 to-sky-300"
+                : "bg-gradient-to-t from-orange-500 to-orange-300",
           )}
-          style={{ height: `${Math.max(8, intensity * 0.6)}%` }}
+          style={{
+            height: `${Math.max(8, (isFrozen ? 100 : intensity) * 0.6)}%`,
+          }}
         />
       )}
 
@@ -454,6 +533,14 @@ function CalendarCell({
           className="absolute right-0.5 top-0.5 inline-flex size-3 items-center justify-center rounded-full bg-emerald-500 text-[8px] font-bold leading-none text-white"
         >
           ✓
+        </span>
+      )}
+      {!isComplete && isFrozen && (
+        <span
+          aria-hidden
+          className="absolute right-0.5 top-0.5 inline-flex size-3 items-center justify-center rounded-full bg-sky-500 text-white"
+        >
+          <Shield className="size-2" strokeWidth={2.75} />
         </span>
       )}
 
@@ -477,6 +564,13 @@ function CalendarCell({
       >
         {dayNum}
       </span>
+
+      {canFreeze && (
+        <FreezeCellButton
+          dayKey={cell.day}
+          remainingHint={freezesRemaining}
+        />
+      )}
     </div>
   );
 }

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth-utils";
 import { awardForQuiz } from "@/lib/coins";
+import { itemFromResult, recordReview } from "@/lib/srs";
+import { evaluateAchievements } from "@/lib/achievements";
 
 export const runtime = "nodejs";
 
@@ -89,5 +91,32 @@ export async function POST(req: Request) {
   // retry doesn't double-pay.
   const coins = await awardForQuiz(userId, attempt.id, total, correct);
 
-  return NextResponse.json({ attemptId: attempt.id, coins });
+  // Update spaced-repetition state for each answer. We run reviews
+  // sequentially (each targets a different row) to avoid fighting over
+  // the same upsert when the same item was asked twice in one quiz.
+  // Failures here shouldn't block the response — the worst case is a
+  // slightly stale schedule, which self-heals on the next answer.
+  try {
+    for (const r of results) {
+      const item = itemFromResult(
+        r.kind,
+        r.prompt,
+        r.correct,
+        typeof r.wordId === "number" && ownedWordIds.has(r.wordId)
+          ? r.wordId
+          : null,
+      );
+      if (!item) continue;
+      await recordReview(userId, item.type, item.key, r.isCorrect);
+    }
+  } catch {
+    // Swallow; SRS is best-effort for this response.
+  }
+
+  // Evaluate achievements after everything else so counters are fresh.
+  // Returns the list of *newly* unlocked rows so the client can
+  // celebrate them on the results screen.
+  const newlyUnlocked = await evaluateAchievements(userId);
+
+  return NextResponse.json({ attemptId: attempt.id, coins, newlyUnlocked });
 }

@@ -6,6 +6,7 @@ import {
   getSlowestWords,
 } from "@/lib/stats";
 import { requireUserId } from "@/lib/auth-utils";
+import { getDueCount, getMasteryBuckets } from "@/lib/srs";
 
 export const runtime = "nodejs";
 
@@ -13,11 +14,14 @@ export async function GET() {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
 
-  const [summary, slowestWords, kanjiStats] = await Promise.all([
-    getProgressSummary(userId),
-    getSlowestWords(userId),
-    getKanjiQuizStats(userId),
-  ]);
+  const [summary, slowestWords, kanjiStats, mastery, dueCount] =
+    await Promise.all([
+      getProgressSummary(userId),
+      getSlowestWords(userId),
+      getKanjiQuizStats(userId),
+      getMasteryBuckets(userId),
+      getDueCount(userId),
+    ]);
 
   const attempts = await prisma.quizAttempt.findMany({
     where: { userId },
@@ -45,5 +49,7 @@ export async function GET() {
     attempts,
     accuracyByDay,
     kanjiStats,
+    mastery,
+    dueCount,
   });
 }
