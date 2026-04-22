@@ -9,6 +9,7 @@ import {
   Keyboard,
   Languages,
   Sparkles,
+  Upload,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HIRAGANA, KATAKANA } from "@/lib/kana";
@@ -140,19 +141,31 @@ export default async function StudyHubPage() {
         >
           学
         </div>
-        <div className="relative flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary/80">
-            <Sparkles className="size-3.5" />
-            Study hub
+        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary/80">
+              <Sparkles className="size-3.5" />
+              Study hub
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              Five paths to N5
+            </h1>
+            <p className="max-w-2xl text-muted-foreground sm:text-lg">
+              Start with the kana table, warm up on vocab, then drill grammar
+              patterns and kanji stroke order. Every section has native audio
+              you can tap.
+            </p>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Four paths to N5
-          </h1>
-          <p className="max-w-2xl text-muted-foreground sm:text-lg">
-            Start with the kana table, warm up on vocab, then drill grammar
-            patterns and kanji stroke order. Every section has native audio
-            you can tap.
-          </p>
+          {/* Import lives here (not in the topbar) because it's really a
+              "grow your vocab" action — contextual to Study. */}
+          <Link
+            href="/import"
+            className="group inline-flex shrink-0 items-center gap-2 self-start rounded-full border bg-background/60 px-4 py-2 text-sm font-semibold backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:bg-background hover:shadow-sm"
+          >
+            <Upload className="size-3.5" />
+            Import words
+            <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+          </Link>
         </div>
       </section>
 

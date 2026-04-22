@@ -1,34 +1,33 @@
-import Image from "next/image";
-import Link from "next/link";
-import { redirect } from "next/navigation";
+import Image from "next/image"
+import Link from "next/link"
+import { redirect } from "next/navigation"
 import {
   ArrowRight,
   BookOpen,
-  Coins,
-  Flame,
   GraduationCap,
   Layers,
   Library,
   Sparkles,
   Target,
   TrendingUp,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { auth, currentUser } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/prisma";
-import { getStreak } from "@/lib/streak";
-import { getCoinSummary, getDailyQuests } from "@/lib/coins";
-import { StreakWidget } from "@/components/streak-widget";
-import { DailyQuests } from "@/components/daily-quests";
-import { cn } from "@/lib/utils";
+} from "lucide-react"
+import type { LucideIcon } from "lucide-react"
+import { auth, currentUser } from "@clerk/nextjs/server"
+import { prisma } from "@/lib/prisma"
+import { getStreak } from "@/lib/streak"
+import { getCoinSummary, getDailyQuests } from "@/lib/coins"
+import { StreakWidget } from "@/components/streak-widget"
+import { DailyQuests } from "@/components/daily-quests"
+import { DashboardGreeting, DashboardMetaTime } from "@/components/dashboard-time"
+import { cn } from "@/lib/utils"
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic"
 
 export default async function DashboardPage() {
-  const { userId } = await auth();
-  if (!userId) redirect("/sign-in");
+  const { userId } = await auth()
+  if (!userId) redirect("/sign-in")
 
-  const user = await currentUser();
+  const user = await currentUser()
 
   const [wordCount, recentAttempts, streak, quests, coinSummary] =
     await Promise.all([
@@ -41,54 +40,27 @@ export default async function DashboardPage() {
       getStreak(userId),
       getDailyQuests(userId),
       getCoinSummary(userId),
-    ]);
-  const totalAnswered = recentAttempts.reduce((s, a) => s + a.total, 0);
-  const totalCorrect = recentAttempts.reduce((s, a) => s + a.correct, 0);
+    ])
+  const totalAnswered = recentAttempts.reduce((s, a) => s + a.total, 0)
+  const totalCorrect = recentAttempts.reduce((s, a) => s + a.correct, 0)
   const recentAccuracy =
-    totalAnswered === 0 ? null : Math.round((totalCorrect / totalAnswered) * 100);
+    totalAnswered === 0
+      ? null
+      : Math.round((totalCorrect / totalAnswered) * 100)
 
   const firstName =
     user?.firstName ??
     user?.username ??
     user?.emailAddresses[0]?.emailAddress.split("@")[0] ??
-    "there";
+    "there"
 
   const quizzesLabel =
-    recentAttempts.length === 10 ? "10+" : recentAttempts.length.toString();
-
-  // Time-of-day greeting tuned to the user's local hour. Server renders
-  // UTC; we approximate with UTC and accept the small regional drift.
-  const now = new Date();
-  const hour = now.getUTCHours();
-  const timeGreeting =
-    hour < 5 || hour >= 22
-      ? "Burning the midnight oil"
-      : hour < 12
-        ? "Good morning"
-        : hour < 17
-          ? "Good afternoon"
-          : "Good evening";
-
-  // Calendar masthead label: "Wednesday, April 22 · Morning"
-  const dateLabel = new Intl.DateTimeFormat("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(now);
-  const partOfDay =
-    hour < 5 || hour >= 22
-      ? "Late night"
-      : hour < 12
-        ? "Morning"
-        : hour < 17
-          ? "Afternoon"
-          : "Evening";
+    recentAttempts.length === 10 ? "10+" : recentAttempts.length.toString()
 
   // Quest progress drives the hero's adaptive copy + CTA.
-  const completedQuests = quests.filter((q) => q.completed).length;
-  const allQuestsDone = completedQuests === quests.length;
-  const questPct = Math.round((completedQuests / quests.length) * 100);
+  const completedQuests = quests.filter((q) => q.completed).length
+  const allQuestsDone = completedQuests === quests.length
+  const questPct = Math.round((completedQuests / quests.length) * 100)
   const heroSubtitle = allQuestsDone
     ? `All ${quests.length} daily quests complete · +${coinSummary.earnedToday} coins earned`
     : completedQuests > 0
@@ -97,7 +69,7 @@ export default async function DashboardPage() {
         ? `Keep your ${streak.current}-day streak alive`
         : wordCount === 0
           ? "Add some words to begin your journey"
-          : "Start today's first quest";
+          : "Start today's first quest"
 
   const heroCta = allQuestsDone
     ? { label: "View progress", href: "/progress" }
@@ -105,7 +77,7 @@ export default async function DashboardPage() {
       ? { label: "Keep going", href: "/study" }
       : wordCount === 0
         ? { label: "Browse categories", href: "/categories" }
-        : { label: "Start now", href: "/study" };
+        : { label: "Start now", href: "/study" }
 
   const stats: StatItem[] = [
     {
@@ -113,14 +85,18 @@ export default async function DashboardPage() {
       value: wordCount.toString(),
       icon: Library,
       tone: "violet",
-      hint: wordCount === 0 ? "Import some to get started" : "From your imports + categories",
+      hint:
+        wordCount === 0
+          ? "Import some to get started"
+          : "From your imports + categories",
     },
     {
       label: "Recent accuracy",
       value: recentAccuracy === null ? "—" : `${recentAccuracy}%`,
       icon: Target,
       tone: "emerald",
-      hint: recentAccuracy === null ? "Take a quiz to track" : "Last 10 quizzes",
+      hint:
+        recentAccuracy === null ? "Take a quiz to track" : "Last 10 quizzes",
     },
     {
       label: "Quizzes taken",
@@ -129,7 +105,7 @@ export default async function DashboardPage() {
       tone: "amber",
       hint: recentAttempts.length === 0 ? "None yet" : "Recent activity",
     },
-  ];
+  ]
 
   const actions: ActionItem[] = [
     {
@@ -164,7 +140,7 @@ export default async function DashboardPage() {
       tone: "rose",
       kanji: "道",
     },
-  ];
+  ]
 
   return (
     <div className="space-y-8">
@@ -179,33 +155,9 @@ export default async function DashboardPage() {
           className="pointer-events-none absolute -left-16 top-1/2 size-56 -translate-y-1/2 rounded-full bg-orange-500/15 blur-3xl"
         />
 
-        {/* Meta strip — calendar context on the left, quiet counters on the right. */}
-        <div className="relative flex items-center justify-between border-b bg-muted/30 px-5 py-2 text-xs sm:px-6">
-          <span className="truncate text-muted-foreground">
-            <span className="font-medium text-foreground/80">{dateLabel}</span>
-            <span className="mx-1.5 text-muted-foreground/60">·</span>
-            <span>{partOfDay}</span>
-          </span>
-          <span className="flex shrink-0 items-center gap-3">
-            <span
-              className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-300"
-              title={`${streak.current}-day streak`}
-            >
-              <Flame className="size-3.5" />
-              <span className="font-semibold tabular-nums">
-                {streak.current}
-              </span>
-            </span>
-            <span
-              className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-300"
-              title={`${coinSummary.balance.toLocaleString()} coins`}
-            >
-              <Coins className="size-3.5" />
-              <span className="font-semibold tabular-nums">
-                {coinSummary.balance.toLocaleString()}
-              </span>
-            </span>
-          </span>
+        {/* Meta strip — simple calendar context. */}
+        <div className="relative border-b bg-muted/30 px-5 py-2 text-xs sm:px-6">
+          <DashboardMetaTime />
         </div>
 
         {/* Main — companion on the left, adaptive greeting + concrete state on the right. */}
@@ -218,14 +170,10 @@ export default async function DashboardPage() {
             height={240}
             priority
             draggable={false}
-            className="size-24 shrink-0 select-none drop-shadow-[0_10px_18px_rgba(251,146,60,0.4)] animate-float sm:size-28"
+            className="size-28 shrink-0 select-none drop-shadow-[0_10px_18px_rgba(251,146,60,0.4)] animate-float sm:size-36"
           />
           <div className="min-w-0 flex-1 space-y-1">
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-              {timeGreeting},{" "}
-              <span className="text-primary">{firstName}</span>
-              <span className="text-foreground/70">.</span>
-            </h1>
+            <DashboardGreeting firstName={firstName} />
             <p className="text-sm text-foreground/70 sm:text-base">
               {heroSubtitle}
             </p>
@@ -304,19 +252,19 @@ export default async function DashboardPage() {
         </div>
       </section>
     </div>
-  );
+  )
 }
 
-type Tone = "violet" | "emerald" | "amber" | "rose";
+type Tone = "violet" | "emerald" | "amber" | "rose"
 
 const TONE: Record<
   Tone,
   {
-    gradient: string;
-    iconWrap: string;
-    chip: string;
-    hover: string;
-    kanji: string;
+    gradient: string
+    iconWrap: string
+    chip: string
+    hover: string
+    kanji: string
   }
 > = {
   violet: {
@@ -324,8 +272,7 @@ const TONE: Record<
     iconWrap:
       "bg-violet-500/15 text-violet-600 dark:text-violet-300 ring-violet-500/30",
     chip: "bg-violet-500/15 text-violet-600 dark:text-violet-300",
-    hover:
-      "group-hover:border-violet-400/60 group-hover:shadow-violet-500/10",
+    hover: "group-hover:border-violet-400/60 group-hover:shadow-violet-500/10",
     kanji: "text-violet-500/10 dark:text-violet-300/10",
   },
   emerald: {
@@ -353,19 +300,19 @@ const TONE: Record<
     hover: "group-hover:border-rose-400/60 group-hover:shadow-rose-500/10",
     kanji: "text-rose-500/10 dark:text-rose-300/10",
   },
-};
+}
 
 type StatItem = {
-  label: string;
-  value: string;
-  icon: LucideIcon;
-  tone: Tone;
-  hint?: string;
-};
+  label: string
+  value: string
+  icon: LucideIcon
+  tone: Tone
+  hint?: string
+}
 
 function StatTile({ stat }: { stat: StatItem }) {
-  const Icon = stat.icon;
-  const tone = TONE[stat.tone];
+  const Icon = stat.icon
+  const tone = TONE[stat.tone]
   return (
     <div
       className={cn(
@@ -398,21 +345,21 @@ function StatTile({ stat }: { stat: StatItem }) {
         </span>
       </div>
     </div>
-  );
+  )
 }
 
 type ActionItem = {
-  href: string;
-  title: string;
-  desc: string;
-  icon: LucideIcon;
-  tone: Tone;
-  kanji: string;
-};
+  href: string
+  title: string
+  desc: string
+  icon: LucideIcon
+  tone: Tone
+  kanji: string
+}
 
 function ActionTile({ action }: { action: ActionItem }) {
-  const Icon = action.icon;
-  const tone = TONE[action.tone];
+  const Icon = action.icon
+  const tone = TONE[action.tone]
   return (
     <Link href={action.href} className="group block">
       <article
@@ -459,5 +406,5 @@ function ActionTile({ action }: { action: ActionItem }) {
         </div>
       </article>
     </Link>
-  );
+  )
 }

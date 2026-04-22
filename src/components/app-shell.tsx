@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -14,11 +14,9 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
-  Play,
   ScrollText,
   Sparkles,
   TrendingUp,
-  Upload,
   X,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
@@ -99,17 +97,6 @@ const NAV_GROUPS: NavGroup[] = [
 ]
 
 const COLLAPSED_KEY = "tomodachi_sidebar_collapsed"
-const LAST_VISITED_KEY = "tomodachi_last_visited"
-
-// Anything not in this list is treated as "chrome" and won't be remembered
-// for the Continue learning CTA (so coming back doesn't dump you back on
-// /import or /dashboard).
-const TRACKABLE_PREFIXES = ["/study", "/quiz", "/categories", "/progress"]
-const FALLBACK_CONTINUE = "/study"
-
-function isTrackablePath(path: string): boolean {
-  return TRACKABLE_PREFIXES.some((p) => path === p || path.startsWith(p + "/"))
-}
 
 // ---------- shell ----------
 
@@ -126,15 +113,12 @@ export function AppShell({
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
-  const [continueHref, setContinueHref] = useState<string>(FALLBACK_CONTINUE)
   const pathname = usePathname()
 
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(COLLAPSED_KEY)
       if (raw === "1") setCollapsed(true)
-      const last = window.localStorage.getItem(LAST_VISITED_KEY)
-      if (last) setContinueHref(last)
     } catch {
       // ignore
     }
@@ -147,20 +131,6 @@ export function AppShell({
       // ignore
     }
   }, [collapsed])
-
-  // Remember the most recent learning page so the sidebar CTA can deep-link
-  // back to it. We re-read on every pathname change so the button label and
-  // target stay in sync as the user navigates.
-  useEffect(() => {
-    if (!pathname) return
-    if (!isTrackablePath(pathname)) return
-    try {
-      window.localStorage.setItem(LAST_VISITED_KEY, pathname)
-      setContinueHref(pathname)
-    } catch {
-      // ignore
-    }
-  }, [pathname])
 
   useEffect(() => {
     setDrawerOpen(false)
@@ -203,14 +173,13 @@ export function AppShell({
   const mainOffset = collapsed ? "lg:pl-[72px]" : "lg:pl-[260px]"
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen overflow-x-clip">
       <DesktopSidebar
         pathname={pathname}
         collapsed={collapsed}
         widthClass={sidebarWidth}
         streak={streak}
         coins={coins}
-        continueHref={continueHref}
       />
 
       {drawerOpen && (
@@ -231,7 +200,6 @@ export function AppShell({
           collapsed={false}
           streak={streak}
           coins={coins}
-          continueHref={continueHref}
           onClose={() => setDrawerOpen(false)}
         />
       </aside>
@@ -262,7 +230,8 @@ export function AppShell({
 //
 // One topbar that adapts: on mobile it has the menu trigger + brand; on
 // desktop it has the sidebar collapse toggle. Either way the right side
-// holds Import, theme toggle, and the profile button.
+// holds the coin chip, theme toggle, and the profile button. (Import
+// lives on the Study page — it's a contextual action, not a chrome one.)
 
 function TopBar({
   collapsed,
@@ -277,11 +246,13 @@ function TopBar({
 }) {
   return (
     <header className="sticky top-0 z-30 flex h-16 min-h-16 items-center justify-between gap-2 border-b bg-background/85 px-3 py-0 backdrop-blur sm:px-4">
-      <div className="flex min-w-0 items-center gap-1.5">
+      {/* Left cluster shrinks; the Tomodachi wordmark is hidden on phones to
+          avoid colliding with the action cluster on the right. */}
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
         <Button
           variant="ghost"
           size="sm"
-          className="size-9 p-0 lg:hidden"
+          className="size-9 shrink-0 p-0 lg:hidden"
           aria-label="Open menu"
           onClick={onOpenDrawer}
         >
@@ -290,7 +261,7 @@ function TopBar({
         <Button
           variant="ghost"
           size="sm"
-          className="hidden size-9 p-0 lg:inline-flex"
+          className="hidden size-9 shrink-0 p-0 lg:inline-flex"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           onClick={onToggleCollapsed}
         >
@@ -300,16 +271,16 @@ function TopBar({
             <PanelLeftClose className="size-5" />
           )}
         </Button>
-        <Brand size="sm" hideSubtitle className="lg:hidden" />
+        <Brand
+          size="sm"
+          hideSubtitle
+          className="lg:hidden"
+          wordmarkClassName="hidden sm:inline"
+        />
       </div>
-      <div className="flex items-center gap-1 sm:gap-2">
+      {/* Right cluster never compresses — it owns its width. */}
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         {coins && <CoinChip coins={coins} />}
-        <Button asChild size="sm" variant="outline" className="gap-1.5">
-          <Link href="/import">
-            <Upload className="size-4" />
-            <span className="hidden sm:inline">Import</span>
-          </Link>
-        </Button>
         <ThemeToggle />
         <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
       </div>
@@ -350,19 +321,17 @@ function DesktopSidebar({
   widthClass,
   streak,
   coins,
-  continueHref,
 }: {
   pathname: string
   collapsed: boolean
   widthClass: string
   streak: SidebarStreak | null
   coins: SidebarCoins | null
-  continueHref: string
 }) {
   return (
     <aside
       className={cn(
-        "fixed inset-y-0 left-0 z-30 hidden flex-col border-r bg-card transition-[width] duration-200 lg:flex",
+        "fixed inset-y-0 left-0 z-40 hidden flex-col border-r bg-card transition-[width] duration-200 lg:flex",
         widthClass,
       )}
     >
@@ -371,7 +340,6 @@ function DesktopSidebar({
         collapsed={collapsed}
         streak={streak}
         coins={coins}
-        continueHref={continueHref}
       />
     </aside>
   )
@@ -382,14 +350,12 @@ function SidebarContents({
   collapsed,
   streak,
   coins,
-  continueHref,
   onClose,
 }: {
   pathname: string
   collapsed: boolean
   streak: SidebarStreak | null
   coins: SidebarCoins | null
-  continueHref: string
   onClose?: () => void
 }) {
   return (
@@ -398,7 +364,7 @@ function SidebarContents({
 
       <div
         className={cn(
-          "flex-1 overflow-y-auto py-3",
+          "flex-1 overflow-y-auto overflow-x-hidden py-3",
           collapsed ? "px-2" : "px-3",
         )}
       >
@@ -421,11 +387,6 @@ function SidebarContents({
           collapsed ? "px-2 pb-3" : "px-3 pb-3",
         )}
       >
-        <ContinueCTA
-          collapsed={collapsed}
-          streak={streak}
-          href={continueHref}
-        />
         <TodayPanel streak={streak} collapsed={collapsed} />
         <SidebarCoinsPanel coins={coins} collapsed={collapsed} />
       </div>
@@ -667,49 +628,6 @@ function MiniGoal({
   )
 }
 
-// ---------- continue CTA ----------
-
-function ContinueCTA({
-  collapsed,
-  streak,
-  href,
-}: {
-  collapsed: boolean
-  streak: SidebarStreak | null
-  href: string
-}) {
-  const label = useMemo(() => {
-    if (!streak || streak.current === 0) return "Start studying"
-    if (streak.todayCompleted) return "Keep going"
-    return "Continue learning"
-  }, [streak])
-
-  if (collapsed) {
-    return (
-      <div className="flex justify-center">
-        <CollapsedTooltip label={label}>
-          <Link
-            href={href}
-            className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm transition-transform hover:scale-105"
-          >
-            <Play className="size-4" fill="currentColor" />
-          </Link>
-        </CollapsedTooltip>
-      </div>
-    )
-  }
-
-  return (
-    <Link
-      href={href}
-      className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-transform hover:scale-[1.02]"
-    >
-      <Play className="size-3.5" fill="currentColor" />
-      {label}
-    </Link>
-  )
-}
-
 // ---------- nav ----------
 
 function NavGroupBlock({
@@ -908,11 +826,16 @@ function Brand({
   hideSubtitle: _hideSubtitle = false,
   compact = false,
   className,
+  wordmarkClassName,
 }: {
   size?: "sm" | "md"
   hideSubtitle?: boolean
   compact?: boolean
   className?: string
+  // Caller can hide / restyle the "Tomodachi" wordmark — used by the mobile
+  // topbar to drop the wordmark on narrow screens where it would otherwise
+  // collide with the right-side action cluster (coin chip, Import, etc).
+  wordmarkClassName?: string
 }) {
   void _hideSubtitle
   // tomodachi-logo.svg viewBox 669×373 — full asset, no clipping
@@ -946,7 +869,12 @@ function Brand({
         draggable={false}
       />
       {!compact && (
-        <span className="-ml-3 min-w-0 leading-none [text-rendering:geometricPrecision]">
+        <span
+          className={cn(
+            "-ml-3 min-w-0 leading-none [text-rendering:geometricPrecision]",
+            wordmarkClassName,
+          )}
+        >
           Tomodachi
         </span>
       )}
@@ -966,15 +894,62 @@ function CollapsedTooltip({
   label: string
   children: React.ReactNode
 }) {
+  const anchorRef = useRef<HTMLSpanElement | null>(null)
+  const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(
+    null,
+  )
+
+  const updatePosition = () => {
+    const el = anchorRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setPosition({
+      top: rect.top + rect.height / 2,
+      left: rect.right + 10,
+    })
+  }
+
+  useEffect(() => {
+    if (!open) return
+    updatePosition()
+    window.addEventListener("resize", updatePosition)
+    window.addEventListener("scroll", updatePosition, true)
+    return () => {
+      window.removeEventListener("resize", updatePosition)
+      window.removeEventListener("scroll", updatePosition, true)
+    }
+  }, [open])
+
   return (
-    <span className="group/tip relative inline-flex">
+    <span
+      ref={anchorRef}
+      className="relative inline-flex"
+      onMouseEnter={() => {
+        updatePosition()
+        setOpen(true)
+      }}
+      onMouseLeave={() => setOpen(false)}
+      onFocusCapture={() => {
+        updatePosition()
+        setOpen(true)
+      }}
+      onBlurCapture={() => setOpen(false)}
+    >
       {children}
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-md border bg-popover px-2 py-1 text-xs font-medium text-popover-foreground opacity-0 shadow-md transition-all duration-150 group-hover/tip:translate-x-0 group-hover/tip:opacity-100"
-      >
-        {label}
-      </span>
+      {open && position && (
+        <span
+          role="tooltip"
+          className="pointer-events-none fixed z-[9999] whitespace-nowrap rounded-md border bg-popover px-2 py-1 text-xs font-medium text-popover-foreground opacity-100 shadow-md"
+          style={{
+            top: position.top,
+            left: position.left,
+            transform: "translateY(-50%)",
+          }}
+        >
+          {label}
+        </span>
+      )}
     </span>
   )
 }

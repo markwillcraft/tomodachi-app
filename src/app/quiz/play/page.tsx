@@ -215,14 +215,20 @@ export default function PlayPage() {
     current.kind === "kanji_to_reading";
 
   return (
-    <div className="space-y-8">
+    // When an answer is picked we float the action bar over the bottom edge
+    // (mobile only). Reserve space here so the last answer choice doesn't
+    // sit underneath the bar and get hidden.
+    <div className={cn("space-y-6 sm:space-y-8", picked !== null && "pb-32 sm:pb-0")}>
       {training && (
         <div className="flex items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
-          <Dumbbell className="size-3.5" />
-          <span>
-            <strong>Training session</strong> — no timer, results stay in
-            your local Practice history and won't change your streak or
-            Progress charts.
+          <Dumbbell className="size-3.5 shrink-0" />
+          <span className="min-w-0">
+            <strong>Training session</strong>
+            <span className="hidden sm:inline">
+              {" "}— no timer, results stay in your local Practice history and
+              won&apos;t change your streak or Progress charts.
+            </span>
+            <span className="sm:hidden"> · practice only</span>
           </span>
         </div>
       )}
@@ -245,12 +251,14 @@ export default function PlayPage() {
       </div>
 
       <Card>
-        <CardContent className="py-12 text-center space-y-4">
+        <CardContent className="space-y-4 py-6 text-center sm:py-12">
           <Badge variant="outline">{kindLabel(current.kind)}</Badge>
           <div
             className={cn(
-              "font-bold",
-              isJapanesePrompt ? "jp text-7xl" : "text-5xl",
+              "font-bold leading-tight break-words",
+              isJapanesePrompt
+                ? "jp text-6xl sm:text-7xl"
+                : "text-3xl sm:text-5xl",
             )}
           >
             {current.prompt}
@@ -258,7 +266,7 @@ export default function PlayPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3">
         {current.choices.map((choice, i) => {
           const isPicked = picked === i;
           const isCorrect = i === current.correctIndex;
@@ -277,7 +285,7 @@ export default function PlayPage() {
               onClick={() => pick(i)}
               disabled={picked !== null}
               className={cn(
-                "flex items-center gap-4 rounded-lg border px-5 py-4 text-left text-lg transition-colors disabled:cursor-not-allowed",
+                "flex items-center gap-3 rounded-lg border px-4 py-3 text-left text-base transition-colors disabled:cursor-not-allowed sm:gap-4 sm:px-5 sm:py-4 sm:text-lg",
                 stateCls,
               )}
             >
@@ -296,24 +304,42 @@ export default function PlayPage() {
         })}
       </div>
 
+      {/* Action bar: pinned to the bottom on mobile so Next is always within
+          thumb reach, falls back to inline flow on sm+ where it fits without
+          scrolling. The safe-area inset accounts for iOS home indicators. */}
       {picked !== null && (
-        <div className="flex items-center justify-between gap-3">
-          {training ? (
-            <span className="text-sm text-muted-foreground">
-              {answers[answers.length - 1]?.isCorrect
-                ? "Nice — keep going."
-                : "No worries, this one's just practice."}
-            </span>
-          ) : (
-            <span className="text-sm text-muted-foreground flex items-center gap-1">
-              <Clock className="size-3.5" />
-              Answered in {formatMs(elapsed)}
-            </span>
+        <div
+          className={cn(
+            "fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80",
+            "pb-[max(env(safe-area-inset-bottom),0.75rem)]",
+            "sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:pb-0 sm:backdrop-blur-none",
           )}
-          <Button size="lg" onClick={next}>
-            {index + 1 >= total ? "Finish" : "Next"}
-            <ArrowRight />
-          </Button>
+        >
+          <div className="flex items-center justify-between gap-3">
+            {training ? (
+              <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
+                {answers[answers.length - 1]?.isCorrect
+                  ? "Nice — keep going."
+                  : "No worries, just practice."}
+              </span>
+            ) : (
+              <span className="flex min-w-0 flex-1 items-center gap-1 truncate text-sm text-muted-foreground">
+                <Clock className="size-3.5 shrink-0" />
+                <span className="truncate">
+                  Answered in {formatMs(elapsed)}
+                </span>
+              </span>
+            )}
+            <Button
+              size="lg"
+              onClick={next}
+              autoFocus
+              className="shrink-0"
+            >
+              {index + 1 >= total ? "Finish" : "Next"}
+              <ArrowRight />
+            </Button>
+          </div>
         </div>
       )}
     </div>
