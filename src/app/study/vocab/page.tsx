@@ -5,6 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { StudyCardDeck, type StudyWord } from "@/components/study-card";
 import { DAILY_CARD_GOAL } from "@/lib/streak";
+import { getUserTimezone, localDayKey, localMidnight } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -50,10 +51,13 @@ export default async function StudyVocabPage({
   });
 
   // Build today's already-viewed set so the StudyCardDeck reflects current
-  // streak progress on first load. Day boundary uses UTC to match streak
-  // logic.
-  const startOfDay = new Date();
-  startOfDay.setUTCHours(0, 0, 0, 0);
+  // streak progress on first load. Day boundary is the user's *local*
+  // midnight — the same one getStreak() and the coin summary use —
+  // otherwise the counter stays anchored to UTC and shows yesterday's
+  // tallies for up to 24h in the user's real timezone.
+  const now = new Date();
+  const tz = await getUserTimezone(userId);
+  const startOfDay = localMidnight(now, tz);
   const todayViews = await prisma.cardView.findMany({
     where: { userId, createdAt: { gte: startOfDay } },
     select: { wordId: true },
@@ -63,10 +67,12 @@ export default async function StudyVocabPage({
   );
 
   // Deterministic daily shuffle: same seed for the whole day so reloads
-  // don't scramble the order, but next day gives a fresh ordering.
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // don't scramble the order, but next day gives a fresh ordering. Key
+  // off the local day so the shuffle rotates at the user's midnight,
+  // not UTC's.
+  const todayKey = localDayKey(now, tz);
   const seed = hashString(
-    `${userId}::${todayIso}::batch=${batchId ?? "all"}`,
+    `${userId}::${todayKey}::batch=${batchId ?? "all"}`,
   );
   const shuffled = seededShuffle(words, seed);
 

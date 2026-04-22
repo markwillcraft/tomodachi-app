@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getUserTimezone, localMidnight } from "@/lib/time";
 
 // Server helpers for pulling per-user kanji study progress. Used by the
 // Study > Kanji pages so we can mark characters viewed today or viewed
@@ -10,8 +11,11 @@ export type KanjiProgress = {
 };
 
 export async function getKanjiProgress(userId: string): Promise<KanjiProgress> {
-  const startOfDay = new Date();
-  startOfDay.setUTCHours(0, 0, 0, 0);
+  // Anchor "today" to the user's local midnight — same boundary used by
+  // getStreak() and the coin summary — so the viewedToday set rolls
+  // over when the user's day flips, not at UTC midnight.
+  const tz = await getUserTimezone(userId);
+  const startOfDay = localMidnight(new Date(), tz);
 
   const [today, ever] = await Promise.all([
     prisma.kanjiView.findMany({
