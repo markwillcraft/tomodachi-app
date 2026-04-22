@@ -7,12 +7,15 @@ import { usePathname } from "next/navigation"
 import {
   BookOpen,
   GraduationCap,
+  Languages,
   Layers,
   LayoutDashboard,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
   Play,
+  ScrollText,
+  Sparkles,
   TrendingUp,
   Upload,
   X,
@@ -75,7 +78,16 @@ const NAV_GROUPS: NavGroup[] = [
           { href: "/categories", label: "N5 Categories", icon: Layers },
         ],
       },
-      { href: "/quiz", label: "Quiz", icon: GraduationCap },
+      {
+        href: "/quiz",
+        label: "Quiz",
+        icon: GraduationCap,
+        children: [
+          { href: "/quiz/vocab", label: "Vocab", icon: Sparkles },
+          { href: "/quiz/kana", label: "Hiragana / Katakana", icon: Languages },
+          { href: "/quiz/kanji", label: "Kanji", icon: ScrollText },
+        ],
+      },
     ],
   },
 ]
