@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth-utils";
+import { awardForCardView } from "@/lib/coins";
 
 export const runtime = "nodejs";
 
@@ -31,6 +32,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Word not found" }, { status: 404 });
   }
 
-  await prisma.cardView.create({ data: { userId, wordId } });
-  return NextResponse.json({ ok: true });
+  const view = await prisma.cardView.create({ data: { userId, wordId } });
+  const coins = await awardForCardView(userId, view.id);
+  return NextResponse.json({ ok: true, coins });
 }

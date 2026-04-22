@@ -63,20 +63,10 @@ function buildPool(setup: SetupState): KanaPair[] {
 function buildSequence(setup: SetupState): KanaPair[] {
   const pool = buildPool(setup);
   if (pool.length === 0) return [];
-  const out: KanaPair[] = [];
-  let bag: KanaPair[] = [];
-  let lastRomaji: string | null = null;
-  while (out.length < setup.length) {
-    if (bag.length === 0) bag = shuffle(pool);
-    const next = bag.pop()!;
-    if (next.romaji === lastRomaji && bag.length > 0) {
-      bag.unshift(next);
-      continue;
-    }
-    out.push(next);
-    lastRomaji = next.romaji;
-  }
-  return out;
+  // Baseline run is unique-only. If requested length is larger than the pool,
+  // cap to pool size so we never duplicate kana on initial pass.
+  const targetLength = Math.min(setup.length, pool.length);
+  return shuffle(pool).slice(0, targetLength);
 }
 
 export function KanaMuscleMemory() {
@@ -97,9 +87,79 @@ export function KanaMuscleMemory() {
   const [shake, setShake] = useState(false);
   const [paused, setPaused] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [status, setStatus] = useState<"typing" | "wrong">("typing");
+  const [coinsEarned, setCoinsEarned] = useState<number | null>(null);
   const startedAtRef = useRef<number>(0);
   const pausedAtRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const lockedRef = useRef(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const drillKeyRef = useRef<string>("");
+  const reportedRef = useRef<string>("");
+
+  const audioOn = setup.audio;
+
+  const getAudioCtx = useCallback(() => {
+    if (typeof window === "undefined") return null;
+    if (!audioCtxRef.current) {
+      const Ctx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
+      if (!Ctx) return null;
+      audioCtxRef.current = new Ctx();
+    }
+    return audioCtxRef.current;
+  }, []);
+
+  const playTone = useCallback(
+    (
+      freq: number,
+      duration: number,
+      type: OscillatorType = "sine",
+      peak = 0.08,
+    ) => {
+      if (!audioOn) return;
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(peak, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + duration + 0.02);
+    },
+    [audioOn, getAudioCtx],
+  );
+
+  const playCorrect = useCallback(() => {
+    // crisp upward chirp
+    playTone(660, 0.07, "sine", 0.05);
+    window.setTimeout(() => playTone(990, 0.1, "sine", 0.06), 35);
+  }, [playTone]);
+
+  const playWrong = useCallback(() => {
+    // short low thud
+    playTone(220, 0.09, "square", 0.07);
+    window.setTimeout(() => playTone(150, 0.14, "square", 0.08), 60);
+  }, [playTone]);
+
+  const vibrate = useCallback((pattern: number | number[]) => {
+    if (typeof navigator === "undefined") return;
+    const nav = navigator as unknown as {
+      vibrate?: (p: number | number[]) => boolean;
+    };
+    try {
+      nav.vibrate?.(pattern);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const total = sequence.length;
   const current = sequence[index];
@@ -114,14 +174,22 @@ export function KanaMuscleMemory() {
     setSequence(seq);
     setIndex(0);
     setTyped("");
+    setStatus("typing");
     setCorrectCount(0);
     setWrongCount(0);
     setBestStreak(0);
     setStreak(0);
     setElapsedMs(0);
+    setCoinsEarned(null);
     startedAtRef.current = Date.now();
     pausedAtRef.current = null;
     setPaused(false);
+    lockedRef.current = false;
+    // Stable per-attempt id so a network retry can't double-pay coins.
+    drillKeyRef.current =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setPhase("drill");
     setTimeout(focusInput, 50);
   }
@@ -142,6 +210,34 @@ export function KanaMuscleMemory() {
     return () => window.clearInterval(id);
   }, [phase, paused]);
 
+  // Report drill completion exactly once per attempt to mint coins.
+  useEffect(() => {
+    if (phase !== "done") return;
+    if (!drillKeyRef.current) return;
+    if (reportedRef.current === drillKeyRef.current) return;
+    reportedRef.current = drillKeyRef.current;
+    const total = correctCount + wrongCount;
+    if (total === 0) return;
+    fetch("/api/study/kana-drill", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        drillKey: drillKeyRef.current,
+        total,
+        correct: correctCount,
+      }),
+    })
+      .then((r) => r.json())
+      .then((data: { coins?: { earned?: number } }) => {
+        if (typeof data?.coins?.earned === "number") {
+          setCoinsEarned(data.coins.earned);
+        }
+      })
+      .catch(() => {
+        // silent — coin minting is best-effort
+      });
+  }, [phase, correctCount, wrongCount]);
+
   function togglePause() {
     if (phase !== "drill") return;
     if (paused) {
@@ -156,9 +252,15 @@ export function KanaMuscleMemory() {
     }
   }
 
-  function advance(wasCorrect: boolean) {
-    setTyped("");
-    if (wasCorrect) {
+  function handleCorrect() {
+    if (!current) return;
+    const target = current.romaji;
+    lockedRef.current = true;
+    setTyped(target);
+    setStatus("typing");
+    playCorrect();
+    vibrate(20);
+    window.setTimeout(() => {
       setCorrectCount((c) => c + 1);
       setStreak((s) => {
         const next = s + 1;
@@ -166,32 +268,59 @@ export function KanaMuscleMemory() {
         return next;
       });
       if (setup.audio && current) speakJapanese(current.kana, 1.0);
-    } else {
-      setWrongCount((w) => w + 1);
-      setStreak(0);
-      setShake(true);
-      window.setTimeout(() => setShake(false), 280);
-    }
-    if (index + 1 >= sequence.length) {
-      setPhase("done");
-    } else {
-      setIndex((i) => i + 1);
-    }
+      setTyped("");
+      setStatus("typing");
+      lockedRef.current = false;
+      if (index + 1 >= sequence.length) {
+        setPhase("done");
+      } else {
+        setIndex((i) => i + 1);
+      }
+    }, 110);
+  }
+
+  function handleWrong(raw: string) {
+    lockedRef.current = true;
+    setTyped(raw);
+    setStatus("wrong");
+    setWrongCount((w) => w + 1);
+    setStreak(0);
+    setShake(true);
+    playWrong();
+    vibrate([50, 40, 60]);
+    window.setTimeout(() => setShake(false), 280);
+    const badIndex = index;
+    window.setTimeout(() => {
+      // Send the missed kana to the end of the queue so the user has to
+      // answer it again. Keep index pointing at the same slot, which now
+      // holds the next kana in line.
+      setSequence((prev) => {
+        if (prev.length <= 1) return prev;
+        const copy = [...prev];
+        const [bad] = copy.splice(badIndex, 1);
+        copy.push(bad);
+        return copy;
+      });
+      setTyped("");
+      setStatus("typing");
+      lockedRef.current = false;
+    }, 450);
   }
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    if (paused || !current) return;
+    if (paused || !current || lockedRef.current) return;
     const raw = e.target.value.toLowerCase().replace(/[^a-z]/g, "");
     const target = current.romaji;
     if (raw === target) {
-      advance(true);
+      handleCorrect();
       return;
     }
     if (target.startsWith(raw)) {
       setTyped(raw);
+      setStatus("typing");
       return;
     }
-    advance(false);
+    handleWrong(raw);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -218,6 +347,7 @@ export function KanaMuscleMemory() {
         wrong={wrongCount}
         bestStreak={bestStreak}
         elapsedMs={elapsedMs}
+        coinsEarned={coinsEarned}
         onRestart={restart}
         onBack={backToSetup}
       />
@@ -253,64 +383,66 @@ export function KanaMuscleMemory() {
         />
       </div>
 
-      <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 text-slate-100 shadow-2xl">
+      <div className="relative overflow-hidden rounded-3xl border border-white/5 bg-[#0a0f1c] text-slate-100 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.7)]">
         <div
           aria-hidden
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 50% 50%, rgba(99,102,241,0.25), transparent 60%)",
-          }}
+          className={cn(
+            "pointer-events-none absolute inset-x-0 top-0 h-[60%] opacity-60 transition-colors duration-300",
+            status === "wrong"
+              ? "[background:radial-gradient(ellipse_at_50%_0%,rgba(244,63,94,0.18),transparent_70%)]"
+              : "[background:radial-gradient(ellipse_at_50%_0%,rgba(16,185,129,0.18),transparent_70%)]",
+          )}
         />
         <div className="relative">
           <KanaBand
             sequence={sequence}
             index={index}
             typed={typed}
+            status={status}
             shake={shake}
           />
         </div>
 
-        <div className="relative flex flex-col items-center gap-3 border-t border-white/5 bg-black/30 px-4 py-4 sm:flex-row sm:justify-between">
-          <div className="flex items-center gap-2 text-xs text-slate-300">
+        <div className="relative flex flex-col items-center gap-3 border-t border-white/5 bg-black/20 px-4 py-3 sm:flex-row sm:justify-between">
+          <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-slate-400">
             <Keyboard className="size-3.5" />
-            {paused
-              ? "Paused — press Esc or hit resume to continue"
-              : "Type the romaji for the highlighted kana. Esc to pause."}
+            {paused ? "Paused · press Esc to resume" : "Type the romaji · Esc to pause"}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <Button
               size="sm"
-              variant="outline"
+              variant="ghost"
               onClick={(e) => {
                 e.stopPropagation();
                 togglePause();
               }}
-              className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+              className="h-8 gap-1.5 text-slate-200 hover:bg-white/5 hover:text-white"
             >
               {paused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
               {paused ? "Resume" : "Pause"}
             </Button>
+            <span aria-hidden className="h-4 w-px bg-white/10" />
             <Button
               size="sm"
-              variant="outline"
+              variant="ghost"
               onClick={(e) => {
                 e.stopPropagation();
                 restart();
               }}
-              className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+              className="h-8 gap-1.5 text-slate-200 hover:bg-white/5 hover:text-white"
             >
               <RotateCcw className="size-3.5" />
               Restart
             </Button>
+            <span aria-hidden className="h-4 w-px bg-white/10" />
             <Button
               size="sm"
-              variant="outline"
+              variant="ghost"
               onClick={(e) => {
                 e.stopPropagation();
                 backToSetup();
               }}
-              className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+              className="h-8 gap-1.5 text-slate-200 hover:bg-white/5 hover:text-white"
             >
               <Settings2 className="size-3.5" />
               Select kana
@@ -340,80 +472,121 @@ function KanaBand({
   sequence,
   index,
   typed,
+  status,
   shake,
 }: {
   sequence: KanaPair[];
   index: number;
   typed: string;
+  status: "typing" | "wrong";
   shake: boolean;
 }) {
-  const CELL = 88; // px width per kana cell
+  const CELL = 96; // px width per kana cell
   const offset = `calc(50% - ${CELL / 2}px - ${index * CELL}px)`;
+  const wrong = status === "wrong";
 
   return (
-    <div className="relative h-44 sm:h-56">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 z-10 w-24 bg-gradient-to-r from-slate-950 to-transparent"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 right-0 z-10 w-24 bg-gradient-to-l from-slate-950 to-transparent"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-32 w-24 -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-emerald-400/30 bg-emerald-400/5 sm:h-40"
-      />
-      <div
-        className={cn(
-          "absolute top-1/2 flex -translate-y-1/2 items-end transition-[left] duration-300 ease-out",
-          shake && "animate-shake",
-        )}
-        style={{ left: offset }}
-      >
-        {sequence.map((k, i) => {
-          const distance = i - index;
-          const isCurrent = distance === 0;
-          const isPast = distance < 0;
-          const fade =
-            distance === 0
-              ? 1
-              : Math.abs(distance) === 1
-                ? 0.55
-                : Math.abs(distance) === 2
-                  ? 0.32
-                  : Math.abs(distance) === 3
-                    ? 0.18
-                    : 0.1;
-          return (
-            <div
-              key={`${i}-${k.kana}`}
-              className="relative flex h-40 flex-col items-center justify-end pb-2 sm:h-48"
-              style={{ width: CELL, opacity: fade }}
-            >
-              {isCurrent && typed.length > 0 && (
-                <div className="absolute top-2 text-base font-semibold tracking-wider text-emerald-300 sm:text-lg">
-                  {typed}
-                </div>
-              )}
+    <div className="relative">
+      {/* Kana track (stimulus) */}
+      <div className="relative h-40 overflow-hidden sm:h-48">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 z-20 w-28 bg-gradient-to-r from-[#0a0f1c] via-[#0a0f1c]/80 to-transparent"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 z-20 w-28 bg-gradient-to-l from-[#0a0f1c] via-[#0a0f1c]/80 to-transparent"
+        />
+        {/* Focused spotlight behind current kana */}
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute left-1/2 top-1/2 z-0 size-56 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl transition-colors duration-200",
+            wrong ? "bg-rose-500/15" : "bg-emerald-500/15",
+          )}
+        />
+        <div
+          className={cn(
+            "absolute top-1/2 z-10 flex -translate-y-1/2 items-center transition-[left] duration-300 ease-out",
+            shake && "animate-shake",
+          )}
+          style={{ left: offset }}
+        >
+          {sequence.map((k, i) => {
+            const distance = i - index;
+            const isCurrent = distance === 0;
+            const isPast = distance < 0;
+            const fade =
+              distance === 0
+                ? 1
+                : Math.abs(distance) === 1
+                  ? 0.5
+                  : Math.abs(distance) === 2
+                    ? 0.28
+                    : Math.abs(distance) === 3
+                      ? 0.14
+                      : 0.06;
+            return (
               <div
-                className={cn(
-                  "jp font-bold leading-none transition-colors",
-                  isCurrent
-                    ? "text-emerald-300 text-7xl sm:text-8xl"
-                    : isPast
-                      ? "text-slate-500 text-5xl sm:text-6xl"
-                      : "text-slate-200 text-5xl sm:text-6xl",
-                )}
+                key={`${i}-${k.kana}`}
+                className="flex h-40 items-center justify-center sm:h-48"
+                style={{ width: CELL, opacity: fade }}
               >
-                {k.kana}
+                <span
+                  className={cn(
+                    "jp font-bold leading-none transition-all duration-200",
+                    isCurrent
+                      ? cn(
+                          "text-7xl drop-shadow-[0_6px_24px_rgba(16,185,129,0.25)] sm:text-8xl",
+                          wrong
+                            ? "text-rose-400 drop-shadow-[0_6px_24px_rgba(244,63,94,0.3)]"
+                            : "text-emerald-300",
+                        )
+                      : isPast
+                        ? "text-4xl text-slate-600 sm:text-5xl"
+                        : "text-4xl text-slate-300 sm:text-5xl",
+                  )}
+                >
+                  {k.kana}
+                </span>
               </div>
-              {isCurrent && (
-                <div className="absolute bottom-0 h-0.5 w-12 rounded-full bg-emerald-400 sm:w-16" />
-              )}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+        {/* Underline accent for current kana (anchored, doesn't scroll) */}
+        <div
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute bottom-4 left-1/2 z-10 h-[3px] w-14 -translate-x-1/2 rounded-full transition-colors sm:w-20",
+            wrong ? "bg-rose-400" : "bg-emerald-400",
+          )}
+        />
+      </div>
+
+      {/* Thin separator between stimulus and answer zones */}
+      <div
+        aria-hidden
+        className="mx-auto h-px w-24 bg-gradient-to-r from-transparent via-white/10 to-transparent"
+      />
+
+      {/* Answer zone (what the user has typed) */}
+      <div className="flex h-20 items-center justify-center px-6 sm:h-24">
+        {typed.length > 0 ? (
+          <div
+            className={cn(
+              "flex items-center font-mono text-3xl font-semibold uppercase tabular-nums transition-colors sm:text-4xl",
+              wrong ? "text-rose-400" : "text-emerald-300",
+            )}
+            style={{ letterSpacing: "0.5em", paddingLeft: "0.5em" }}
+          >
+            {typed}
+          </div>
+        ) : (
+          <div
+            aria-hidden
+            className="h-9 w-[2px] animate-[blink_1.1s_ease-in-out_infinite] rounded-full bg-slate-500/70 sm:h-11"
+          />
+        )}
       </div>
     </div>
   );
@@ -553,6 +726,10 @@ function SetupView({
               </Button>
             ))}
           </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Unique-only run: max {pool.length} kana from your selected rows.
+            Misses are moved to the end for retry.
+          </p>
         </div>
 
         <div className="rounded-2xl border bg-card p-5">
@@ -610,6 +787,7 @@ function DoneView({
   wrong,
   bestStreak,
   elapsedMs,
+  coinsEarned,
   onRestart,
   onBack,
 }: {
@@ -618,6 +796,7 @@ function DoneView({
   wrong: number;
   bestStreak: number;
   elapsedMs: number;
+  coinsEarned: number | null;
   onRestart: () => void;
   onBack: () => void;
 }) {
@@ -634,6 +813,13 @@ function DoneView({
         <div className="mt-2 text-muted-foreground">
           {correct} correct · {wrong} mistakes · best streak {bestStreak}
         </div>
+        {coinsEarned !== null && coinsEarned > 0 && (
+          <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-sm font-semibold text-amber-700 ring-1 ring-inset ring-amber-500/30 dark:bg-amber-500/20 dark:text-amber-200">
+            <span aria-hidden>＋</span>
+            <span className="tabular-nums">{coinsEarned}</span>
+            <span className="text-xs font-medium opacity-80">coins</span>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">

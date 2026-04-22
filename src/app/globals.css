@@ -91,3 +91,8 @@
 .animate-shake {
   animation: shake 0.28s ease-in-out;
 }
+
+@keyframes blink {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 0.15; }
+}

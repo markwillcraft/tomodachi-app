@@ -6,6 +6,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   BookOpen,
+  Coins,
   GraduationCap,
   Languages,
   Layers,
@@ -36,6 +37,11 @@ export type SidebarStreak = {
   cardsDone: number
   cardsGoal: number
   overallPct: number
+}
+
+export type SidebarCoins = {
+  balance: number
+  earnedToday: number
 }
 
 type NavItem = {
@@ -110,10 +116,12 @@ function isTrackablePath(path: string): boolean {
 export function AppShell({
   isSignedIn,
   streak,
+  coins,
   children,
 }: {
   isSignedIn: boolean
   streak: SidebarStreak | null
+  coins: SidebarCoins | null
   children: React.ReactNode
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -201,6 +209,7 @@ export function AppShell({
         collapsed={collapsed}
         widthClass={sidebarWidth}
         streak={streak}
+        coins={coins}
         continueHref={continueHref}
       />
 
@@ -221,6 +230,7 @@ export function AppShell({
           pathname={pathname}
           collapsed={false}
           streak={streak}
+          coins={coins}
           continueHref={continueHref}
           onClose={() => setDrawerOpen(false)}
         />
@@ -234,6 +244,7 @@ export function AppShell({
       >
         <TopBar
           collapsed={collapsed}
+          coins={coins}
           onToggleCollapsed={() => setCollapsed((c) => !c)}
           onOpenDrawer={() => setDrawerOpen(true)}
         />
@@ -255,10 +266,12 @@ export function AppShell({
 
 function TopBar({
   collapsed,
+  coins,
   onToggleCollapsed,
   onOpenDrawer,
 }: {
   collapsed: boolean
+  coins: SidebarCoins | null
   onToggleCollapsed: () => void
   onOpenDrawer: () => void
 }) {
@@ -290,6 +303,7 @@ function TopBar({
         <Brand size="sm" hideSubtitle className="lg:hidden" />
       </div>
       <div className="flex items-center gap-1 sm:gap-2">
+        {coins && <CoinChip coins={coins} />}
         <Button asChild size="sm" variant="outline" className="gap-1.5">
           <Link href="/import">
             <Upload className="size-4" />
@@ -303,6 +317,31 @@ function TopBar({
   )
 }
 
+function CoinChip({ coins }: { coins: SidebarCoins }) {
+  return (
+    <Link
+      href="/dashboard"
+      aria-label={`${coins.balance} coins · +${coins.earnedToday} today`}
+      title={`${coins.balance} coins · +${coins.earnedToday} earned today`}
+      className={cn(
+        "group inline-flex h-9 items-center gap-1.5 rounded-full border px-2.5 text-sm font-semibold tabular-nums transition-colors",
+        "border-amber-500/30 bg-gradient-to-br from-amber-500/15 to-orange-500/10 text-amber-700 hover:from-amber-500/25 hover:to-orange-500/15 dark:text-amber-200",
+      )}
+    >
+      <Coins
+        className="size-4 text-amber-600 transition-transform group-hover:scale-110 dark:text-amber-300"
+        strokeWidth={2.25}
+      />
+      <span>{coins.balance.toLocaleString()}</span>
+      {coins.earnedToday > 0 && (
+        <span className="hidden rounded-full bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-bold leading-none text-amber-700 dark:text-amber-200 sm:inline-block">
+          +{coins.earnedToday}
+        </span>
+      )}
+    </Link>
+  )
+}
+
 // ---------- desktop sidebar ----------
 
 function DesktopSidebar({
@@ -310,12 +349,14 @@ function DesktopSidebar({
   collapsed,
   widthClass,
   streak,
+  coins,
   continueHref,
 }: {
   pathname: string
   collapsed: boolean
   widthClass: string
   streak: SidebarStreak | null
+  coins: SidebarCoins | null
   continueHref: string
 }) {
   return (
@@ -329,6 +370,7 @@ function DesktopSidebar({
         pathname={pathname}
         collapsed={collapsed}
         streak={streak}
+        coins={coins}
         continueHref={continueHref}
       />
     </aside>
@@ -339,12 +381,14 @@ function SidebarContents({
   pathname,
   collapsed,
   streak,
+  coins,
   continueHref,
   onClose,
 }: {
   pathname: string
   collapsed: boolean
   streak: SidebarStreak | null
+  coins: SidebarCoins | null
   continueHref: string
   onClose?: () => void
 }) {
@@ -383,8 +427,67 @@ function SidebarContents({
           href={continueHref}
         />
         <TodayPanel streak={streak} collapsed={collapsed} />
+        <SidebarCoinsPanel coins={coins} collapsed={collapsed} />
       </div>
     </div>
+  )
+}
+
+// ---------- coin panel (sidebar) ----------
+
+function SidebarCoinsPanel({
+  coins,
+  collapsed,
+}: {
+  coins: SidebarCoins | null
+  collapsed: boolean
+}) {
+  if (!coins) return null
+  if (collapsed) {
+    return (
+      <div className="flex justify-center">
+        <CollapsedTooltip
+          label={`${coins.balance.toLocaleString()} coins · +${coins.earnedToday} today`}
+        >
+          <Link
+            href="/dashboard"
+            className="relative flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 ring-1 ring-inset ring-amber-500/30 transition-colors hover:bg-amber-500/20 dark:text-amber-300"
+          >
+            <Coins className="size-4" strokeWidth={2.25} />
+            {coins.earnedToday > 0 && (
+              <span className="absolute -bottom-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-500 px-1 text-[9px] font-bold text-white shadow ring-2 ring-card tabular-nums">
+                +{coins.earnedToday}
+              </span>
+            )}
+          </Link>
+        </CollapsedTooltip>
+      </div>
+    )
+  }
+  return (
+    <Link
+      href="/dashboard"
+      className="block rounded-xl border bg-gradient-to-br from-amber-500/10 via-card to-card p-3 transition-colors hover:from-amber-500/15"
+    >
+      <div className="flex items-center gap-3">
+        <span className="relative flex size-10 items-center justify-center rounded-lg bg-amber-500/15 text-amber-600 ring-1 ring-inset ring-amber-500/30 dark:text-amber-300">
+          <Coins className="size-4" strokeWidth={2.25} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-1">
+            <span className="text-sm font-semibold tabular-nums">
+              {coins.balance.toLocaleString()}
+            </span>
+            <span className="text-xs text-muted-foreground">coins</span>
+          </div>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {coins.earnedToday > 0
+              ? `+${coins.earnedToday} earned today`
+              : "Earn coins from quizzes & study"}
+          </p>
+        </div>
+      </div>
+    </Link>
   )
 }
 

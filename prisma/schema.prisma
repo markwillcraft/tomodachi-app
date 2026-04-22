@@ -109,3 +109,21 @@ model KanjiView {
   @@index([userId, createdAt])
   @@index([userId, char])
 }
+
+// Append-only ledger of every coin grant (and, eventually, spend). The
+// dedupKey is the deduplication contract: e.g. "quiz:<attemptId>" awards
+// quiz coins exactly once even if /api/quiz/submit is retried, and
+// "quest:<utcDate>:<questId>" lets us claim a daily quest reward at most
+// once per day. Balance = sum(amount). Today's earnings = sum where
+// createdAt >= utc-midnight.
+model CoinLedger {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  amount    Int
+  reason    String
+  dedupKey  String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, dedupKey])
+  @@index([userId, createdAt])
+}

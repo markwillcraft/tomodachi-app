@@ -15,7 +15,9 @@ import type { LucideIcon } from "lucide-react";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { getStreak } from "@/lib/streak";
+import { getCoinSummary, getDailyQuests } from "@/lib/coins";
 import { StreakWidget } from "@/components/streak-widget";
+import { DailyQuests } from "@/components/daily-quests";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -26,15 +28,18 @@ export default async function DashboardPage() {
 
   const user = await currentUser();
 
-  const [wordCount, recentAttempts, streak] = await Promise.all([
-    prisma.word.count({ where: { userId } }),
-    prisma.quizAttempt.findMany({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    }),
-    getStreak(userId),
-  ]);
+  const [wordCount, recentAttempts, streak, quests, coinSummary] =
+    await Promise.all([
+      prisma.word.count({ where: { userId } }),
+      prisma.quizAttempt.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      }),
+      getStreak(userId),
+      getDailyQuests(userId),
+      getCoinSummary(userId),
+    ]);
   const totalAnswered = recentAttempts.reduce((s, a) => s + a.total, 0);
   const totalCorrect = recentAttempts.reduce((s, a) => s + a.correct, 0);
   const recentAccuracy =
@@ -137,6 +142,12 @@ export default async function DashboardPage() {
       </section>
 
       <StreakWidget {...streak} />
+
+      <DailyQuests
+        quests={quests}
+        earnedToday={coinSummary.earnedToday}
+        resetsAt={coinSummary.resetsAt}
+      />
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {stats.map((s) => (

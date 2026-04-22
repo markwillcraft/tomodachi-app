@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth-utils";
+import { awardForQuiz } from "@/lib/coins";
 
 export const runtime = "nodejs";
 
@@ -84,5 +85,9 @@ export async function POST(req: Request) {
     },
   });
 
-  return NextResponse.json({ attemptId: attempt.id });
+  // Award action + quest coins. Idempotent on attemptId so a network
+  // retry doesn't double-pay.
+  const coins = await awardForQuiz(userId, attempt.id, total, correct);
+
+  return NextResponse.json({ attemptId: attempt.id, coins });
 }

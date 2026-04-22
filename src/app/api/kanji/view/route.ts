@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth-utils";
 import { getKanjiByChar } from "@/lib/kanji";
+import { awardForKanjiView } from "@/lib/coins";
 
 export const runtime = "nodejs";
 
@@ -51,6 +52,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, deduped: true });
   }
 
-  await prisma.kanjiView.create({ data: { userId, char } });
-  return NextResponse.json({ ok: true });
+  const view = await prisma.kanjiView.create({ data: { userId, char } });
+  const coins = await awardForKanjiView(userId, view.id);
+  return NextResponse.json({ ok: true, coins });
 }

@@ -5,10 +5,15 @@ import { auth } from "@clerk/nextjs/server";
 import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
 import { cn } from "@/lib/utils";
-import { AppShell, type SidebarStreak } from "@/components/app-shell";
+import {
+  AppShell,
+  type SidebarStreak,
+  type SidebarCoins,
+} from "@/components/app-shell";
 import { ThemeProvider } from "@/components/theme-provider";
 import { getStreak } from "@/lib/streak";
 import { DAILY_QUIZ_GOAL, DAILY_CARD_GOAL } from "@/lib/streak";
+import { getCoinSummary, syncTodaysCoins } from "@/lib/coins";
 
 export const metadata: Metadata = {
   title: "Tomodachi — Japanese study buddy",
@@ -23,12 +28,21 @@ export default async function RootLayout({
 }) {
   const { userId } = await auth();
 
-  // Pull a tiny streak summary so the sidebar can show the user's current
-  // momentum — the most important "should I open this app?" signal.
+  // Pull a tiny streak + coin summary so the sidebar/topbar can show the
+  // user's current momentum and reward balance — the most important
+  // "should I open this app?" signals.
   let streak: SidebarStreak | null = null;
+  let coins: SidebarCoins | null = null;
   if (userId) {
     try {
-      const s = await getStreak(userId);
+      // Reconcile today's activity against the coin ledger before we read
+      // the summary. After the first reconciliation of the day this is a
+      // cheap short-circuit (a few counts + a no-op quest claim check).
+      await syncTodaysCoins(userId);
+      const [s, c] = await Promise.all([
+        getStreak(userId),
+        getCoinSummary(userId),
+      ]);
       const quizPct = Math.min(
         100,
         Math.round((s.today.quizAnswered / DAILY_QUIZ_GOAL) * 100),
@@ -46,8 +60,10 @@ export default async function RootLayout({
         cardsGoal: DAILY_CARD_GOAL,
         overallPct: Math.round((quizPct + cardsPct) / 2),
       };
+      coins = { balance: c.balance, earnedToday: c.earnedToday };
     } catch {
       streak = null;
+      coins = null;
     }
   }
 
@@ -85,7 +101,7 @@ export default async function RootLayout({
               showSpinner={false}
               shadow="0 0 10px hsl(217 91% 60%), 0 0 5px hsl(217 91% 60%)"
             />
-            <AppShell isSignedIn={!!userId} streak={streak}>
+            <AppShell isSignedIn={!!userId} streak={streak} coins={coins}>
               {children}
             </AppShell>
           </ClerkProvider>
