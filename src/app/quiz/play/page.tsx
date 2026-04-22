@@ -216,9 +216,20 @@ export default function PlayPage() {
 
   return (
     // When an answer is picked we float the action bar over the bottom edge
-    // (mobile only). Reserve space here so the last answer choice doesn't
-    // sit underneath the bar and get hidden.
-    <div className={cn("space-y-6 sm:space-y-8", picked !== null && "pb-32 sm:pb-0")}>
+    // (mobile only). The buffer must clear:
+    //   bar's own padding (py-3 ≈ 24px) + button (≈ 44px) + border (1px)
+    //   + iOS home-indicator safe-area (up to 34px on iPhone 14 Pro)
+    // We add 9rem (144px) which covers the bar itself plus a generous tap
+    // margin, then ADD the safe-area inset on top so the math is always
+    // correct regardless of device. (On `sm:` the bar drops back into
+    // normal flow so we zero this out.)
+    <div
+      className={cn(
+        "space-y-6 sm:space-y-8",
+        picked !== null &&
+          "pb-[calc(9rem+env(safe-area-inset-bottom))] sm:pb-0",
+      )}
+    >
       {training && (
         <div className="flex items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
           <Dumbbell className="size-3.5 shrink-0" />

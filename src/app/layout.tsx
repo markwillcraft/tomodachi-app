@@ -1,5 +1,5 @@
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import NextTopLoader from "nextjs-toploader";
 import { auth } from "@clerk/nextjs/server";
 import { ClerkProvider } from "@clerk/nextjs";
@@ -19,6 +19,16 @@ export const metadata: Metadata = {
   title: "Tomodachi — Japanese study buddy",
   description:
     "Study Japanese with vocab cards, N5 grammar lessons, kanji stroke order, and AI-powered quizzes.",
+};
+
+// `viewportFit: "cover"` lets the page extend into iOS safe areas so
+// `env(safe-area-inset-*)` returns real numbers (otherwise it's 0). This is
+// required for our quiz floating action bar to clear the iPhone home
+// indicator and for content padding to know the bar's true height.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default async function RootLayout({
