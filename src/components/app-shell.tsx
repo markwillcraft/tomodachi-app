@@ -251,8 +251,8 @@ function TopBar({
   onOpenDrawer: () => void
 }) {
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b bg-background/85 px-3 py-2 backdrop-blur sm:px-4">
-      <div className="flex items-center gap-2">
+    <header className="sticky top-0 z-30 flex h-16 min-h-16 items-center justify-between gap-2 border-b bg-background/85 px-3 py-0 backdrop-blur sm:px-4">
+      <div className="flex min-w-0 items-center gap-1.5">
         <Button
           variant="ghost"
           size="sm"
@@ -386,14 +386,18 @@ function SidebarHeader({
   return (
     <div
       className={cn(
-        "flex h-14 items-center border-b",
-        collapsed ? "justify-center px-2" : "justify-between px-4",
+        "flex h-16 min-h-16 items-center border-b",
+        collapsed
+          ? "justify-center px-2"
+          : onClose
+            ? "justify-between px-4"
+            : "justify-center px-4",
       )}
     >
       {collapsed ? (
         <Brand size="sm" hideSubtitle compact />
       ) : (
-        <Brand size="sm" />
+        <Brand size="sm" className="-ml-6" />
       )}
       {onClose && (
         <Button
@@ -796,32 +800,41 @@ function Brand({
   className?: string
 }) {
   void _hideSubtitle
-  // tomodachi-logo.svg viewBox 669×373 — keep intrinsic aspect for layout
-  const h = size === "sm" ? 40 : 52
+  // tomodachi-logo.svg viewBox 669×373 — full asset, no clipping
+  const h = compact ? (size === "sm" ? 40 : 48) : size === "sm" ? 48 : 60
   const w = Math.round((h * 669) / 373)
   return (
     <Link
       href="/dashboard"
       className={cn(
-        "flex items-center gap-1 font-bold tracking-tight",
-        size === "sm" ? "text-xl" : "text-2xl",
+        "inline-flex min-w-0 items-center gap-0 font-extrabold leading-none tracking-tight",
+        size === "sm" ? "text-3xl" : "text-4xl",
         className,
       )}
     >
       <Image
         src="/tomodachi-logo.svg"
         alt=""
-        aria-hidden
         width={w}
         height={h}
         priority
         className={cn(
           "w-auto shrink-0 select-none",
-          size === "sm" ? "h-10" : "h-[52px]",
+          compact
+            ? size === "sm"
+              ? "h-10"
+              : "h-12"
+            : size === "sm"
+              ? "h-12"
+              : "h-[60px]",
         )}
         draggable={false}
       />
-      {!compact && <span className="leading-none">Tomodachi</span>}
+      {!compact && (
+        <span className="-ml-3 min-w-0 leading-none [text-rendering:geometricPrecision]">
+          Tomodachi
+        </span>
+      )}
     </Link>
   )
 }
