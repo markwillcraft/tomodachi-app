@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -11,67 +12,114 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
-  Sparkles,
+  Play,
   TrendingUp,
   Upload,
   X,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { SignInButton, SignUpButton, UserButton } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { cn } from "@/lib/utils"
 
-type NavItem = { href: string; label: string; icon: React.ReactNode }
+// ---------- types ----------
 
-const NAV_ITEMS: NavItem[] = [
+export type SidebarStreak = {
+  current: number
+  todayCompleted: boolean
+  quizDone: number
+  quizGoal: number
+  cardsDone: number
+  cardsGoal: number
+  overallPct: number
+}
+
+type NavItem = {
+  href: string
+  label: string
+  icon: LucideIcon
+  children?: NavItem[]
+}
+
+type NavGroup = {
+  id: string
+  label: string
+  items: NavItem[]
+}
+
+// ---------- nav config ----------
+//
+// Track first (where the user lands and reflects), Learn second (the daily
+// loop with sub-routes). N5 Categories nests under Study because they share
+// the "browse vocabulary" mental model.
+
+const NAV_GROUPS: NavGroup[] = [
   {
-    href: "/dashboard",
-    label: "Dashboard",
-    icon: <LayoutDashboard className="size-4" />,
+    id: "track",
+    label: "Track",
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/progress", label: "Progress", icon: TrendingUp },
+    ],
   },
-  { href: "/study", label: "Study", icon: <BookOpen className="size-4" /> },
   {
-    href: "/categories",
-    label: "N5 Categories",
-    icon: <Layers className="size-4" />,
-  },
-  {
-    href: "/quiz",
-    label: "Quiz",
-    icon: <GraduationCap className="size-4" />,
-  },
-  {
-    href: "/progress",
-    label: "Progress",
-    icon: <TrendingUp className="size-4" />,
+    id: "learn",
+    label: "Learn",
+    items: [
+      {
+        href: "/study",
+        label: "Study",
+        icon: BookOpen,
+        children: [
+          { href: "/categories", label: "N5 Categories", icon: Layers },
+        ],
+      },
+      { href: "/quiz", label: "Quiz", icon: GraduationCap },
+    ],
   },
 ]
 
 const COLLAPSED_KEY = "tomodachi_sidebar_collapsed"
+const LAST_VISITED_KEY = "tomodachi_last_visited"
+
+// Anything not in this list is treated as "chrome" and won't be remembered
+// for the Continue learning CTA (so coming back doesn't dump you back on
+// /import or /dashboard).
+const TRACKABLE_PREFIXES = ["/study", "/quiz", "/categories", "/progress"]
+const FALLBACK_CONTINUE = "/study"
+
+function isTrackablePath(path: string): boolean {
+  return TRACKABLE_PREFIXES.some((p) => path === p || path.startsWith(p + "/"))
+}
+
+// ---------- shell ----------
 
 export function AppShell({
   isSignedIn,
+  streak,
   children,
 }: {
   isSignedIn: boolean
+  streak: SidebarStreak | null
   children: React.ReactNode
 }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const [continueHref, setContinueHref] = useState<string>(FALLBACK_CONTINUE)
   const pathname = usePathname()
 
-  // Rehydrate the persisted collapse state on mount so desktop users keep
-  // their preference across sessions.
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(COLLAPSED_KEY)
       if (raw === "1") setCollapsed(true)
+      const last = window.localStorage.getItem(LAST_VISITED_KEY)
+      if (last) setContinueHref(last)
     } catch {
-      // ignore storage errors (private mode, etc.)
+      // ignore
     }
   }, [])
 
-  // Persist collapse state whenever it changes.
   useEffect(() => {
     try {
       window.localStorage.setItem(COLLAPSED_KEY, collapsed ? "1" : "0")
@@ -79,6 +127,20 @@ export function AppShell({
       // ignore
     }
   }, [collapsed])
+
+  // Remember the most recent learning page so the sidebar CTA can deep-link
+  // back to it. We re-read on every pathname change so the button label and
+  // target stay in sync as the user navigates.
+  useEffect(() => {
+    if (!pathname) return
+    if (!isTrackablePath(pathname)) return
+    try {
+      window.localStorage.setItem(LAST_VISITED_KEY, pathname)
+      setContinueHref(pathname)
+    } catch {
+      // ignore
+    }
+  }, [pathname])
 
   useEffect(() => {
     setDrawerOpen(false)
@@ -98,7 +160,7 @@ export function AppShell({
       <div className="min-h-screen">
         <header className="border-b">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-6 py-4">
-            <Logo />
+            <Brand />
             <div className="flex items-center gap-1">
               <ThemeToggle />
               <SignInButton mode="modal">
@@ -117,18 +179,19 @@ export function AppShell({
     )
   }
 
-  const sidebarWidthClass = collapsed ? "lg:w-16" : "lg:w-64"
-  const mainOffsetClass = collapsed ? "lg:pl-16" : "lg:pl-64"
+  const sidebarWidth = collapsed ? "lg:w-[72px]" : "lg:w-[260px]"
+  const mainOffset = collapsed ? "lg:pl-[72px]" : "lg:pl-[260px]"
 
   return (
     <div className="min-h-screen">
       <DesktopSidebar
         pathname={pathname}
         collapsed={collapsed}
-        widthClass={sidebarWidthClass}
+        widthClass={sidebarWidth}
+        streak={streak}
+        continueHref={continueHref}
       />
 
-      {/* Mobile drawer */}
       {drawerOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
@@ -138,37 +201,28 @@ export function AppShell({
       )}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 transform border-r bg-card p-4 transition-transform lg:hidden",
+          "fixed inset-y-0 left-0 z-50 w-[280px] transform border-r bg-card transition-transform lg:hidden",
           drawerOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="mb-6 flex items-center justify-between">
-          <Logo small />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="size-9 p-0"
-            aria-label="Close menu"
-            onClick={() => setDrawerOpen(false)}
-          >
-            <X className="size-5" />
-          </Button>
-        </div>
-        <NavList items={NAV_ITEMS} pathname={pathname} collapsed={false} />
-        <div className="mt-6 border-t pt-4 text-xs text-muted-foreground">
-          <Sparkles className="mr-1 inline size-3" /> Tomodachi · ともだち
-        </div>
+        <SidebarContents
+          pathname={pathname}
+          collapsed={false}
+          streak={streak}
+          continueHref={continueHref}
+          onClose={() => setDrawerOpen(false)}
+        />
       </aside>
 
       <div
         className={cn(
           "min-h-screen transition-[padding] duration-200",
-          mainOffsetClass,
+          mainOffset,
         )}
       >
         <TopBar
           collapsed={collapsed}
-          onToggleSidebar={() => setCollapsed((c) => !c)}
+          onToggleCollapsed={() => setCollapsed((c) => !c)}
           onOpenDrawer={() => setDrawerOpen(true)}
         />
         <main>
@@ -181,17 +235,23 @@ export function AppShell({
   )
 }
 
+// ---------- topbar ----------
+//
+// One topbar that adapts: on mobile it has the menu trigger + brand; on
+// desktop it has the sidebar collapse toggle. Either way the right side
+// holds Import, theme toggle, and the profile button.
+
 function TopBar({
   collapsed,
-  onToggleSidebar,
+  onToggleCollapsed,
   onOpenDrawer,
 }: {
   collapsed: boolean
-  onToggleSidebar: () => void
+  onToggleCollapsed: () => void
   onOpenDrawer: () => void
 }) {
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b bg-background/80 px-3 py-2 backdrop-blur sm:px-6 sm:py-3">
+    <header className="sticky top-0 z-30 flex items-center justify-between gap-2 border-b bg-background/85 px-3 py-2 backdrop-blur sm:px-4">
       <div className="flex items-center gap-2">
         <Button
           variant="ghost"
@@ -207,7 +267,7 @@ function TopBar({
           size="sm"
           className="hidden size-9 p-0 lg:inline-flex"
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          onClick={onToggleSidebar}
+          onClick={onToggleCollapsed}
         >
           {collapsed ? (
             <PanelLeftOpen className="size-5" />
@@ -215,7 +275,7 @@ function TopBar({
             <PanelLeftClose className="size-5" />
           )}
         </Button>
-        <Logo small className="lg:hidden" />
+        <Brand size="sm" hideSubtitle className="lg:hidden" />
       </div>
       <div className="flex items-center gap-1 sm:gap-2">
         <Button asChild size="sm" variant="outline" className="gap-1.5">
@@ -231,101 +291,590 @@ function TopBar({
   )
 }
 
+// ---------- desktop sidebar ----------
+
 function DesktopSidebar({
   pathname,
   collapsed,
   widthClass,
+  streak,
+  continueHref,
 }: {
   pathname: string
   collapsed: boolean
   widthClass: string
+  streak: SidebarStreak | null
+  continueHref: string
 }) {
   return (
     <aside
       className={cn(
-        "fixed inset-y-0 left-0 z-30 hidden flex-col border-r bg-card p-3 transition-[width] duration-200 lg:flex",
+        "fixed inset-y-0 left-0 z-30 hidden flex-col border-r bg-card transition-[width] duration-200 lg:flex",
         widthClass,
       )}
     >
-      <div className={cn("mb-6", collapsed ? "flex justify-center" : "")}>
-        <Logo small={collapsed} compact={collapsed} />
-      </div>
-      <NavList items={NAV_ITEMS} pathname={pathname} collapsed={collapsed} />
+      <SidebarContents
+        pathname={pathname}
+        collapsed={collapsed}
+        streak={streak}
+        continueHref={continueHref}
+      />
     </aside>
   )
 }
 
-function NavList({
-  items,
+function SidebarContents({
   pathname,
   collapsed,
+  streak,
+  continueHref,
+  onClose,
 }: {
-  items: NavItem[]
   pathname: string
   collapsed: boolean
+  streak: SidebarStreak | null
+  continueHref: string
+  onClose?: () => void
 }) {
   return (
-    <nav className="flex flex-col gap-1">
-      {items.map((item) => {
-        const active =
-          pathname === item.href || pathname.startsWith(item.href + "/")
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            title={collapsed ? item.label : undefined}
-            className={cn(
-              "flex items-center rounded-md text-sm transition-colors",
-              collapsed ? "size-10 justify-center" : "gap-2 px-3 py-2",
-              active
-                ? "bg-primary/10 text-foreground font-medium"
-                : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-            )}
-          >
-            {item.icon}
-            {!collapsed && <span>{item.label}</span>}
-          </Link>
-        )
-      })}
-    </nav>
+    <div className="flex h-full flex-col">
+      <SidebarHeader collapsed={collapsed} onClose={onClose} />
+
+      <div
+        className={cn(
+          "flex-1 overflow-y-auto py-3",
+          collapsed ? "px-2" : "px-3",
+        )}
+      >
+        <nav className={cn("flex flex-col", collapsed ? "gap-3" : "gap-5")}>
+          {NAV_GROUPS.map((group, idx) => (
+            <NavGroupBlock
+              key={group.id}
+              group={group}
+              pathname={pathname}
+              collapsed={collapsed}
+              isFirst={idx === 0}
+            />
+          ))}
+        </nav>
+      </div>
+
+      <div
+        className={cn(
+          "shrink-0 space-y-3 border-t pt-3",
+          collapsed ? "px-2 pb-3" : "px-3 pb-3",
+        )}
+      >
+        <ContinueCTA
+          collapsed={collapsed}
+          streak={streak}
+          href={continueHref}
+        />
+        <TodayPanel streak={streak} collapsed={collapsed} />
+      </div>
+    </div>
   )
 }
 
-function Logo({
-  small = false,
+function SidebarHeader({
+  collapsed,
+  onClose,
+}: {
+  collapsed: boolean
+  onClose?: () => void
+}) {
+  return (
+    <div
+      className={cn(
+        "flex h-14 items-center border-b",
+        collapsed ? "justify-center px-2" : "justify-between px-4",
+      )}
+    >
+      {collapsed ? (
+        <Brand size="sm" hideSubtitle compact />
+      ) : (
+        <Brand size="sm" />
+      )}
+      {onClose && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="size-8 p-0"
+          aria-label="Close menu"
+          onClick={onClose}
+        >
+          <X className="size-4" />
+        </Button>
+      )}
+    </div>
+  )
+}
+
+// ---------- today panel ----------
+
+function TodayPanel({
+  streak,
+  collapsed,
+}: {
+  streak: SidebarStreak | null
+  collapsed: boolean
+}) {
+  if (!streak) return null
+
+  if (collapsed) {
+    return (
+      <div className="flex justify-center">
+        <CollapsedTooltip
+          label={`${streak.current}-day streak · ${streak.overallPct}% today`}
+        >
+          <Link
+            href="/study"
+            className="relative flex size-10 items-center justify-center rounded-xl bg-orange-500/10 text-orange-600 ring-1 ring-inset ring-orange-500/30 transition-colors hover:bg-orange-500/20 dark:text-orange-300"
+          >
+            <FlameIcon active={streak.current > 0 || streak.todayCompleted} />
+            {streak.current > 0 && (
+              <span className="absolute -bottom-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-rose-600 px-1 text-[9px] font-bold text-white shadow ring-2 ring-card tabular-nums">
+                {streak.current}
+              </span>
+            )}
+          </Link>
+        </CollapsedTooltip>
+      </div>
+    )
+  }
+
+  const subtitle = streak.todayCompleted
+    ? "Today complete · nice work"
+    : streak.current === 0
+      ? "Start a streak today"
+      : "Keep your streak alive"
+
+  return (
+    <Link
+      href="/study"
+      className="block rounded-xl border bg-gradient-to-br from-orange-500/10 via-card to-card p-3 transition-colors hover:from-orange-500/15"
+    >
+      <div className="flex items-center gap-3">
+        <span className="relative flex size-10 items-center justify-center rounded-lg bg-orange-500/15 text-orange-600 ring-1 ring-inset ring-orange-500/30 dark:text-orange-300">
+          <FlameIcon active={streak.current > 0 || streak.todayCompleted} />
+          {streak.current > 0 && (
+            <span className="absolute -bottom-1 -right-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-rose-600 px-1 text-[9px] font-bold text-white shadow ring-2 ring-card tabular-nums">
+              {streak.current}
+            </span>
+          )}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-1">
+            <span className="text-sm font-semibold tabular-nums">
+              {streak.current}
+            </span>
+            <span className="text-xs text-muted-foreground">day streak</span>
+          </div>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {subtitle}
+          </p>
+        </div>
+        <span
+          className={cn(
+            "rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+            streak.todayCompleted
+              ? "bg-emerald-500/15 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200"
+              : "bg-orange-500/15 text-orange-700 dark:bg-orange-500/20 dark:text-orange-200",
+          )}
+        >
+          {streak.overallPct}%
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <MiniGoal
+          label="Quiz"
+          done={streak.quizDone}
+          goal={streak.quizGoal}
+          tone="violet"
+        />
+        <MiniGoal
+          label="Cards"
+          done={streak.cardsDone}
+          goal={streak.cardsGoal}
+          tone="amber"
+        />
+      </div>
+    </Link>
+  )
+}
+
+function MiniGoal({
+  label,
+  done,
+  goal,
+  tone,
+}: {
+  label: string
+  done: number
+  goal: number
+  tone: "violet" | "amber"
+}) {
+  const pct = Math.min(100, Math.round((done / goal) * 100))
+  const complete = done >= goal
+  const TONE = {
+    violet: "from-violet-500 to-indigo-500",
+    amber: "from-amber-400 to-orange-500",
+  } as const
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-[10px]">
+        <span className="text-muted-foreground">{label}</span>
+        <span
+          className={cn(
+            "font-medium tabular-nums",
+            complete
+              ? "text-emerald-600 dark:text-emerald-300"
+              : "text-foreground/80",
+          )}
+        >
+          {done}/{goal}
+        </span>
+      </div>
+      <div className="h-1 overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn(
+            "h-full rounded-full bg-gradient-to-r transition-[width] duration-500",
+            complete ? "from-emerald-500 to-emerald-400" : TONE[tone],
+          )}
+          style={{ width: `${Math.max(2, pct)}%` }}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ---------- continue CTA ----------
+
+function ContinueCTA({
+  collapsed,
+  streak,
+  href,
+}: {
+  collapsed: boolean
+  streak: SidebarStreak | null
+  href: string
+}) {
+  const label = useMemo(() => {
+    if (!streak || streak.current === 0) return "Start studying"
+    if (streak.todayCompleted) return "Keep going"
+    return "Continue learning"
+  }, [streak])
+
+  if (collapsed) {
+    return (
+      <div className="flex justify-center">
+        <CollapsedTooltip label={label}>
+          <Link
+            href={href}
+            className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm transition-transform hover:scale-105"
+          >
+            <Play className="size-4" fill="currentColor" />
+          </Link>
+        </CollapsedTooltip>
+      </div>
+    )
+  }
+
+  return (
+    <Link
+      href={href}
+      className="flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-transform hover:scale-[1.02]"
+    >
+      <Play className="size-3.5" fill="currentColor" />
+      {label}
+    </Link>
+  )
+}
+
+// ---------- nav ----------
+
+function NavGroupBlock({
+  group,
+  pathname,
+  collapsed,
+  isFirst,
+}: {
+  group: NavGroup
+  pathname: string
+  collapsed: boolean
+  isFirst: boolean
+}) {
+  return (
+    <div>
+      {!collapsed ? (
+        <div className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+          {group.label}
+        </div>
+      ) : (
+        // In collapsed mode the row of icons should breathe naturally, so
+        // we drop the divider on the very first group and use a tiny
+        // centered hairline between the rest. No more full-width line.
+        !isFirst && (
+          <div
+            aria-hidden
+            className="mx-auto mb-2 h-px w-5 rounded-full bg-border"
+          />
+        )
+      )}
+      <ul
+        className={cn(
+          "flex flex-col",
+          collapsed ? "items-center gap-1" : "gap-0.5",
+        )}
+      >
+        {group.items.map((item) => (
+          <NavRow
+            key={item.href}
+            item={item}
+            pathname={pathname}
+            collapsed={collapsed}
+          />
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function NavRow({
+  item,
+  pathname,
+  collapsed,
+}: {
+  item: NavItem
+  pathname: string
+  collapsed: boolean
+}) {
+  const childActive =
+    item.children?.some(
+      (c) => pathname === c.href || pathname.startsWith(c.href + "/"),
+    ) ?? false
+  const selfActive =
+    pathname === item.href || pathname.startsWith(item.href + "/")
+  const active = selfActive || childActive
+
+  return (
+    <li>
+      <NavLink
+        item={item}
+        active={active}
+        collapsed={collapsed}
+        // When the active page is a child route (e.g. /categories under
+        // Study), keep the parent visually highlighted but slightly softer
+        // so the child row reads as "you are here".
+        softActive={!selfActive && childActive}
+      />
+      {!collapsed && item.children && item.children.length > 0 && (
+        // Tree connector: a vertical guide line drops from under the
+        // parent icon and a short stub reaches across to each child so
+        // the nesting reads instantly.
+        <ul className="relative mt-0.5 space-y-0.5 pl-[26px]">
+          <span
+            aria-hidden
+            className="absolute bottom-3 left-[19px] top-0 w-px bg-border"
+          />
+          {item.children.map((child, idx) => {
+            const isLast = idx === item.children!.length - 1
+            const childIsActive =
+              pathname === child.href || pathname.startsWith(child.href + "/")
+            return (
+              <li key={child.href} className="relative">
+                <span
+                  aria-hidden
+                  className="absolute left-[-7px] top-1/2 h-px w-2.5 bg-border"
+                />
+                {isLast && (
+                  <span
+                    aria-hidden
+                    className="absolute bottom-1/2 left-[-7px] top-0 w-px bg-border"
+                  />
+                )}
+                <NavLink
+                  item={child}
+                  active={childIsActive}
+                  collapsed={false}
+                  isChild
+                />
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </li>
+  )
+}
+
+function NavLink({
+  item,
+  active,
+  collapsed,
+  isChild = false,
+  softActive = false,
+}: {
+  item: NavItem
+  active: boolean
+  collapsed: boolean
+  isChild?: boolean
+  softActive?: boolean
+}) {
+  const Icon = item.icon
+  const trueActive = active && !softActive
+
+  // Active state design: a warm tinted square (collapsed) or soft
+  // gradient pill (expanded) with an inset ring for a subtle border,
+  // bold text, and a brand-colored icon. We dropped the left accent bar
+  // because it floated awkwardly next to the centered icon in collapsed
+  // mode and made the active row look like a pill behind a dot.
+  const link = (
+    <Link
+      href={item.href}
+      aria-current={trueActive ? "page" : undefined}
+      className={cn(
+        "group/link relative flex items-center text-sm transition-all duration-150",
+        collapsed
+          ? "size-10 justify-center rounded-xl"
+          : isChild
+            ? "gap-2 rounded-md px-2 py-1.5 text-[13px]"
+            : "gap-2.5 rounded-lg px-3 py-2",
+        trueActive
+          ? collapsed
+            ? "bg-primary/15 text-primary shadow-sm ring-1 ring-inset ring-primary/25"
+            : isChild
+              ? "bg-primary/10 font-medium text-foreground"
+              : "bg-gradient-to-r from-primary/15 via-primary/10 to-primary/5 font-semibold text-foreground ring-1 ring-inset ring-primary/15"
+          : softActive
+            ? "bg-primary/5 text-foreground hover:bg-primary/10"
+            : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+      )}
+    >
+      {isChild && (
+        <span
+          aria-hidden
+          className={cn(
+            "size-1.5 shrink-0 rounded-full transition-colors",
+            active ? "bg-primary" : "bg-muted-foreground/40",
+          )}
+        />
+      )}
+      <Icon
+        strokeWidth={trueActive ? 2.25 : 1.75}
+        className={cn(
+          isChild ? "size-3.5" : "size-[18px]",
+          "shrink-0 transition-colors",
+          trueActive
+            ? "text-primary"
+            : softActive
+              ? "text-foreground/80"
+              : "text-muted-foreground group-hover/link:text-foreground",
+        )}
+      />
+      {!collapsed && <span className="truncate">{item.label}</span>}
+    </Link>
+  )
+
+  if (collapsed) {
+    return <CollapsedTooltip label={item.label}>{link}</CollapsedTooltip>
+  }
+  return link
+}
+
+// ---------- brand ----------
+
+function Brand({
+  size = "md",
+  hideSubtitle: _hideSubtitle = false,
   compact = false,
   className,
 }: {
-  small?: boolean
+  size?: "sm" | "md"
+  hideSubtitle?: boolean
   compact?: boolean
   className?: string
 }) {
+  void _hideSubtitle
+  // tomodachi-logo.svg viewBox 669×373 — keep intrinsic aspect for layout
+  const h = size === "sm" ? 40 : 52
+  const w = Math.round((h * 669) / 373)
   return (
     <Link
       href="/dashboard"
       className={cn(
-        "flex items-center gap-2 font-bold",
-        small ? "text-base" : "text-lg",
+        "flex items-center gap-1 font-bold tracking-tight",
+        size === "sm" ? "text-xl" : "text-2xl",
         className,
       )}
     >
-      <span
+      <Image
+        src="/tomodachi-logo.svg"
+        alt=""
         aria-hidden
+        width={w}
+        height={h}
+        priority
         className={cn(
-          "inline-flex items-center justify-center rounded-lg bg-gradient-to-br from-rose-500 to-amber-400 text-white shadow-sm",
-          small ? "size-8" : "size-9",
+          "w-auto shrink-0 select-none",
+          size === "sm" ? "h-10" : "h-[52px]",
         )}
-      >
-        <span className="jp font-bold">友</span>
-      </span>
-      {!compact && (
-        <span className="flex flex-col leading-tight">
-          Tomodachi
-          <span className="text-[10px] font-normal text-muted-foreground jp">
-            ともだち
-          </span>
-        </span>
-      )}
+        draggable={false}
+      />
+      {!compact && <span className="leading-none">Tomodachi</span>}
     </Link>
+  )
+}
+
+// ---------- tooltip ----------
+//
+// Custom hover tooltip used in collapsed sidebar mode. We avoid the native
+// `title` attribute because its delay and OS styling break the visual flow.
+
+function CollapsedTooltip({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <span className="group/tip relative inline-flex">
+      {children}
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-md border bg-popover px-2 py-1 text-xs font-medium text-popover-foreground opacity-0 shadow-md transition-all duration-150 group-hover/tip:translate-x-0 group-hover/tip:opacity-100"
+      >
+        {label}
+      </span>
+    </span>
+  )
+}
+
+// ---------- icons ----------
+
+function FlameIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={18}
+      height={18}
+      className={cn(!active && "opacity-50 saturate-50")}
+    >
+      <defs>
+        <linearGradient id="sb-flame" x1="0.5" y1="1" x2="0.5" y2="0">
+          <stop offset="0%" stopColor="#fde047" />
+          <stop offset="45%" stopColor="#fb923c" />
+          <stop offset="100%" stopColor="#dc2626" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"
+        fill="url(#sb-flame)"
+        stroke="#b91c1c"
+        strokeWidth="0.4"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }

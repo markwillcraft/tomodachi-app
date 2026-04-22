@@ -17,6 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { N5_KANJI } from "@/lib/kanji";
 import { HIRAGANA, KATAKANA } from "@/lib/kana";
 import { cn } from "@/lib/utils";
+import { PracticeHistoryCard } from "@/components/practice-history-card";
 
 export const dynamic = "force-dynamic";
 
@@ -88,9 +89,9 @@ export default async function QuizHubPage() {
             Pick what to drill
           </h1>
           <p className="max-w-2xl text-muted-foreground sm:text-lg">
-            Every quiz answer counts toward your daily streak goal of 50
-            questions. Choose a mode below, then configure count and subset on
-            the next screen.
+            Ranked answers count toward your 50/day streak goal. Prefer a
+            chill warm-up? Switch to Training on the next screen — no timer,
+            no Progress impact.
           </p>
 
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -129,6 +130,8 @@ export default async function QuizHubPage() {
           ))}
         </div>
       </section>
+
+      <PracticeHistoryCard />
 
       <section className="flex items-start gap-3 rounded-xl border bg-gradient-to-r from-violet-500/5 via-muted/30 to-transparent p-5 text-sm text-muted-foreground">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-violet-500 dark:text-violet-300">

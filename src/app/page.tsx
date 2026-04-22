@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -30,6 +31,15 @@ export default async function LandingPage() {
   return (
     <div className="space-y-16">
       <section className="space-y-5 pt-8">
+        <Image
+          src="/tomodachi-logo.svg"
+          alt="Tomodachi"
+          width={201}
+          height={112}
+          priority
+          draggable={false}
+          className="h-24 w-auto select-none drop-shadow-sm sm:h-28"
+        />
         <div className="inline-flex items-center gap-2 rounded-full border bg-muted/40 px-3 py-1 text-xs font-medium text-muted-foreground">
           <span className="size-1.5 rounded-full bg-emerald-400" />
           Tomodachi · your Japanese study buddy

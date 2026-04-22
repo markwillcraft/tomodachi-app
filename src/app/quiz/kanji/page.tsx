@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { N5_KANJI, KANJI_SECTIONS } from "@/lib/kanji";
 import { cn } from "@/lib/utils";
+import { QuizModeToggle, type QuizSessionMode } from "@/components/quiz-mode-toggle";
 
 const COUNT_OPTIONS = [10, 20, 30, 50];
 
@@ -28,6 +29,7 @@ const KANJI_GROUPS: { label: string; chars: string[] }[] = KANJI_SECTIONS.map(
 export default function KanjiQuizSetupPage() {
   const router = useRouter();
   const [count, setCount] = useState(20);
+  const [sessionMode, setSessionMode] = useState<QuizSessionMode>("ranked");
   const [selectedGroups, setSelectedGroups] = useState<Set<number>>(
     () => new Set(KANJI_GROUPS.map((_, i) => i)),
   );
@@ -73,7 +75,11 @@ export default function KanjiQuizSetupPage() {
       if (!res.ok) throw new Error(data.error || "Failed to start quiz");
       sessionStorage.setItem(
         "quiz",
-        JSON.stringify({ mode: "kanji", questions: data.questions }),
+        JSON.stringify({
+          mode: "kanji",
+          questions: data.questions,
+          training: sessionMode === "training",
+        }),
       );
       router.push("/quiz/play");
     } catch (e) {
@@ -104,6 +110,8 @@ export default function KanjiQuizSetupPage() {
           kanji → reading.
         </p>
       </section>
+
+      <QuizModeToggle value={sessionMode} onChange={setSessionMode} />
 
       <Card>
         <CardHeader>

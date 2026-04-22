@@ -5,8 +5,10 @@ import { auth } from "@clerk/nextjs/server";
 import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
 import { cn } from "@/lib/utils";
-import { AppShell } from "@/components/app-shell";
+import { AppShell, type SidebarStreak } from "@/components/app-shell";
 import { ThemeProvider } from "@/components/theme-provider";
+import { getStreak } from "@/lib/streak";
+import { DAILY_QUIZ_GOAL, DAILY_CARD_GOAL } from "@/lib/streak";
 
 export const metadata: Metadata = {
   title: "Tomodachi — Japanese study buddy",
@@ -20,6 +22,34 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const { userId } = await auth();
+
+  // Pull a tiny streak summary so the sidebar can show the user's current
+  // momentum — the most important "should I open this app?" signal.
+  let streak: SidebarStreak | null = null;
+  if (userId) {
+    try {
+      const s = await getStreak(userId);
+      const quizPct = Math.min(
+        100,
+        Math.round((s.today.quizAnswered / DAILY_QUIZ_GOAL) * 100),
+      );
+      const cardsPct = Math.min(
+        100,
+        Math.round((s.today.cardsViewed / DAILY_CARD_GOAL) * 100),
+      );
+      streak = {
+        current: s.current,
+        todayCompleted: s.today.completed,
+        quizDone: s.today.quizAnswered,
+        quizGoal: DAILY_QUIZ_GOAL,
+        cardsDone: s.today.cardsViewed,
+        cardsGoal: DAILY_CARD_GOAL,
+        overallPct: Math.round((quizPct + cardsPct) / 2),
+      };
+    } catch {
+      streak = null;
+    }
+  }
 
   return (
     <html lang="en" suppressHydrationWarning>
@@ -55,7 +85,9 @@ export default async function RootLayout({
               showSpinner={false}
               shadow="0 0 10px hsl(217 91% 60%), 0 0 5px hsl(217 91% 60%)"
             />
-            <AppShell isSignedIn={!!userId}>{children}</AppShell>
+            <AppShell isSignedIn={!!userId} streak={streak}>
+              {children}
+            </AppShell>
           </ClerkProvider>
         </ThemeProvider>
       </body>

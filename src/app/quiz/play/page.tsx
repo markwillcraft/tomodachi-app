@@ -2,7 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Check, Clock, Loader2, Sparkles, X } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  Clock,
+  Dumbbell,
+  History,
+  Loader2,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,6 +24,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { feedback } from "@/lib/feedback";
+import { addPracticeSession } from "@/lib/practice-history";
 
 type Question = {
   id: string;
@@ -41,6 +51,7 @@ function formatMs(ms: number): string {
 
 export default function PlayPage() {
   const [mode, setMode] = useState<string>("vocab");
+  const [training, setTraining] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [index, setIndex] = useState(0);
   const [picked, setPicked] = useState<number | null>(null);
@@ -50,8 +61,11 @@ export default function PlayPage() {
   const [tipsLoading, setTipsLoading] = useState(false);
 
   // Per-question timer. We capture the timestamp the question rendered and
-  // diff against the moment the user picks an answer.
+  // diff against the moment the user picks an answer. In training mode we
+  // still capture the start time (so we can compute a session duration on
+  // the results screen) but never display it mid-quiz.
   const questionStartRef = useRef<number>(Date.now());
+  const sessionStartRef = useRef<number>(Date.now());
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -60,21 +74,26 @@ export default function PlayPage() {
     const parsed = JSON.parse(raw) as {
       mode: string;
       questions: Question[];
+      training?: boolean;
     };
     setMode(parsed.mode);
     setQuestions(parsed.questions);
+    setTraining(Boolean(parsed.training));
+    sessionStartRef.current = Date.now();
   }, []);
 
-  // Reset timer whenever a new question shows up.
+  // Reset timer whenever a new question shows up. Skip the per-question
+  // ticker entirely in training mode — there's no time pressure.
   useEffect(() => {
     questionStartRef.current = Date.now();
     setElapsed(0);
     if (picked !== null) return;
+    if (training) return;
     const interval = setInterval(() => {
       setElapsed(Date.now() - questionStartRef.current);
     }, 100);
     return () => clearInterval(interval);
-  }, [index, picked]);
+  }, [index, picked, training]);
 
   const current = questions[index];
   const total = questions.length;
@@ -111,6 +130,27 @@ export default function PlayPage() {
   async function finish() {
     setFinished(true);
     const results = [...answers];
+    if (training) {
+      const correct = results.filter((a) => a.isCorrect).length;
+      const kinds: Record<string, { total: number; correct: number }> = {};
+      for (const a of results) {
+        const k = a.question.kind;
+        if (!kinds[k]) kinds[k] = { total: 0, correct: 0 };
+        kinds[k].total += 1;
+        if (a.isCorrect) kinds[k].correct += 1;
+      }
+      addPracticeSession({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        startedAt: sessionStartRef.current,
+        finishedAt: Date.now(),
+        mode,
+        total: results.length,
+        correct,
+        wrong: results.length - correct,
+        kinds,
+      });
+      return;
+    }
     try {
       await fetch("/api/quiz/submit", {
         method: "POST",
@@ -162,6 +202,7 @@ export default function PlayPage() {
         correct={correctCount}
         tips={tips}
         tipsLoading={tipsLoading}
+        training={training}
       />
     );
   }
@@ -175,16 +216,28 @@ export default function PlayPage() {
 
   return (
     <div className="space-y-8">
+      {training && (
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+          <Dumbbell className="size-3.5" />
+          <span>
+            <strong>Training session</strong> — no timer, results stay in
+            your local Practice history and won't change your streak or
+            Progress charts.
+          </span>
+        </div>
+      )}
       <div className="space-y-2">
         <div className="flex justify-between text-sm text-muted-foreground">
           <span>
             Question {Math.min(index + 1, total)} / {total}
           </span>
           <span className="flex items-center gap-3">
-            <span className="flex items-center gap-1">
-              <Clock className="size-3.5" />
-              {formatMs(elapsed)}
-            </span>
+            {!training && (
+              <span className="flex items-center gap-1">
+                <Clock className="size-3.5" />
+                {formatMs(elapsed)}
+              </span>
+            )}
             <span>{correctCount} correct</span>
           </span>
         </div>
@@ -245,10 +298,18 @@ export default function PlayPage() {
 
       {picked !== null && (
         <div className="flex items-center justify-between gap-3">
-          <span className="text-sm text-muted-foreground flex items-center gap-1">
-            <Clock className="size-3.5" />
-            Answered in {formatMs(elapsed)}
-          </span>
+          {training ? (
+            <span className="text-sm text-muted-foreground">
+              {answers[answers.length - 1]?.isCorrect
+                ? "Nice — keep going."
+                : "No worries, this one's just practice."}
+            </span>
+          ) : (
+            <span className="text-sm text-muted-foreground flex items-center gap-1">
+              <Clock className="size-3.5" />
+              Answered in {formatMs(elapsed)}
+            </span>
+          )}
           <Button size="lg" onClick={next}>
             {index + 1 >= total ? "Finish" : "Next"}
             <ArrowRight />
@@ -265,12 +326,14 @@ function ResultsView({
   correct,
   tips,
   tipsLoading,
+  training,
 }: {
   answers: Answer[];
   total: number;
   correct: number;
   tips: string[] | null;
   tipsLoading: boolean;
+  training: boolean;
 }) {
   const pct = total === 0 ? 0 : Math.round((correct / total) * 100);
   const wrong = useMemo(
@@ -297,50 +360,72 @@ function ResultsView({
     <div className="space-y-8">
       <Card>
         <CardContent className="py-10 text-center space-y-4">
-          <Badge variant="secondary">Quiz complete</Badge>
+          <Badge variant={training ? "outline" : "secondary"}>
+            {training ? (
+              <span className="inline-flex items-center gap-1">
+                <Dumbbell className="size-3" />
+                Training session — not recorded
+              </span>
+            ) : (
+              "Quiz complete"
+            )}
+          </Badge>
           <div className="text-6xl font-bold">{pct}%</div>
           <p className="text-muted-foreground">
-            {correct} / {total} correct · avg {formatMs(avgMs)} per question
+            {training
+              ? `${correct} / ${total} correct · logged to your local Practice history`
+              : `${correct} / ${total} correct · avg ${formatMs(avgMs)} per question`}
           </p>
-          <div className="flex justify-center gap-3 pt-2">
+          <div className="flex flex-wrap justify-center gap-3 pt-2">
             <Button asChild>
               <Link href="/quiz">New quiz</Link>
             </Button>
-            <Button asChild variant="outline">
-              <Link href="/progress">See progress</Link>
-            </Button>
+            {training ? (
+              <Button asChild variant="outline">
+                <Link href="/quiz#practice-history">
+                  <History className="size-4" />
+                  Practice history
+                </Link>
+              </Button>
+            ) : (
+              <Button asChild variant="outline">
+                <Link href="/progress">See progress</Link>
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="size-4" />
-            AI coach
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {tipsLoading && (
-            <>
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-5/6" />
-              <Skeleton className="h-10 w-4/6" />
-            </>
-          )}
-          {tips &&
-            tips.map((t, i) => (
-              <div
-                key={i}
-                className="rounded-md border bg-muted/30 p-3 text-sm"
-              >
-                {t}
-              </div>
-            ))}
-        </CardContent>
-      </Card>
+      {!training && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="size-4" />
+              AI coach
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {tipsLoading && (
+              <>
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-5/6" />
+                <Skeleton className="h-10 w-4/6" />
+              </>
+            )}
+            {tips &&
+              tips.map((t, i) => (
+                <div
+                  key={i}
+                  className="rounded-md border bg-muted/30 p-3 text-sm"
+                >
+                  {t}
+                </div>
+              ))}
+          </CardContent>
+        </Card>
+      )}
 
-      {slowest.length > 0 && (
+      {!training && slowest.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -377,10 +462,12 @@ function ResultsView({
               <div key={i} className="rounded-md border p-4 space-y-2">
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">{kindLabel(a.question.kind)}</Badge>
-                  <Badge variant="secondary" className="ml-auto">
-                    <Clock className="size-3 mr-1" />
-                    {formatMs(a.timeMs)}
-                  </Badge>
+                  {!training && (
+                    <Badge variant="secondary" className="ml-auto">
+                      <Clock className="size-3 mr-1" />
+                      {formatMs(a.timeMs)}
+                    </Badge>
+                  )}
                 </div>
                 <div className="jp text-2xl">{a.question.prompt}</div>
                 <div className="flex flex-wrap items-center gap-2 text-sm">

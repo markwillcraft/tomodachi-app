@@ -16,12 +16,14 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { KANA_GROUPS, type KanaScript } from "@/lib/kana";
 import { cn } from "@/lib/utils";
+import { QuizModeToggle, type QuizSessionMode } from "@/components/quiz-mode-toggle";
 
 const COUNT_OPTIONS = [10, 20, 30, 50];
 
 export default function KanaQuizSetupPage() {
   const router = useRouter();
   const [count, setCount] = useState(20);
+  const [sessionMode, setSessionMode] = useState<QuizSessionMode>("ranked");
   const [script, setScript] = useState<KanaScript>("both");
   const [selected, setSelected] = useState<Set<string>>(
     () => new Set(["a", "k", "s", "t", "n"]),
@@ -84,7 +86,11 @@ export default function KanaQuizSetupPage() {
       if (!res.ok) throw new Error(data.error || "Failed to start quiz");
       sessionStorage.setItem(
         "quiz",
-        JSON.stringify({ mode, questions: data.questions }),
+        JSON.stringify({
+          mode,
+          questions: data.questions,
+          training: sessionMode === "training",
+        }),
       );
       router.push("/quiz/play");
     } catch (e) {
@@ -117,6 +123,8 @@ export default function KanaQuizSetupPage() {
           up before vocab practice.
         </p>
       </section>
+
+      <QuizModeToggle value={sessionMode} onChange={setSessionMode} />
 
       <Card>
         <CardHeader>

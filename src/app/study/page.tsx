@@ -6,6 +6,7 @@ import {
   Brush,
   Flame,
   GraduationCap,
+  Keyboard,
   Languages,
   Sparkles,
 } from "lucide-react";
@@ -110,6 +111,24 @@ export default async function StudyHubPage() {
         kanji: "text-rose-500/10 dark:text-rose-300/10",
       },
     },
+    {
+      href: "/study/muscle-memory",
+      icon: Keyboard,
+      title: "Muscle memory",
+      kanji: "打",
+      description:
+        "Type the romaji as kana scroll by. A typing-trainer style drill to wire kana into your fingers.",
+      chip: "Typing drill",
+      cta: "Start drilling",
+      accent: {
+        gradient: "from-sky-500/20 via-sky-500/5 to-transparent",
+        chip: "bg-sky-500/15 text-sky-600 dark:text-sky-300",
+        iconWrap:
+          "bg-sky-500/15 text-sky-600 dark:text-sky-300 ring-sky-500/30",
+        hover: "group-hover:border-sky-400/60 group-hover:shadow-sky-500/10",
+        kanji: "text-sky-500/10 dark:text-sky-300/10",
+      },
+    },
   ];
 
   return (
@@ -139,7 +158,7 @@ export default async function StudyHubPage() {
 
       <StreakWidget {...streak} />
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {cards.map((c) => (
           <StudyHubCard key={c.href} card={c} />
         ))}

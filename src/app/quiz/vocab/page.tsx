@@ -14,12 +14,14 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { QuizModeToggle, type QuizSessionMode } from "@/components/quiz-mode-toggle";
 
 const COUNT_OPTIONS = [10, 20, 30, 50];
 
 export default function VocabQuizSetupPage() {
   const router = useRouter();
   const [count, setCount] = useState(20);
+  const [sessionMode, setSessionMode] = useState<QuizSessionMode>("ranked");
   const [wordCount, setWordCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +46,11 @@ export default function VocabQuizSetupPage() {
       if (!res.ok) throw new Error(data.error || "Failed to start quiz");
       sessionStorage.setItem(
         "quiz",
-        JSON.stringify({ mode: "vocab", questions: data.questions }),
+        JSON.stringify({
+          mode: "vocab",
+          questions: data.questions,
+          training: sessionMode === "training",
+        }),
       );
       router.push("/quiz/play");
     } catch (e) {
@@ -88,6 +94,8 @@ export default function VocabQuizSetupPage() {
         </Alert>
       )}
 
+      <QuizModeToggle value={sessionMode} onChange={setSessionMode} />
+
       <Card>
         <CardHeader>
           <CardTitle>How many questions?</CardTitle>
@@ -110,7 +118,9 @@ export default function VocabQuizSetupPage() {
             ))}
           </div>
           <div className="text-xs text-muted-foreground">
-            Daily streak goal: 50 quiz questions answered.
+            {sessionMode === "ranked"
+              ? "Daily streak goal: 50 quiz questions answered."
+              : "Training sessions don't count toward your streak."}
           </div>
         </CardContent>
       </Card>

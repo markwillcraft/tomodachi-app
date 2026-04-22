@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -110,12 +111,16 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-10">
       <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/15 via-background to-background p-6 sm:p-8">
-        <div
+        <Image
+          src="/tomodachi-logo.svg"
+          alt=""
           aria-hidden
-          className="jp pointer-events-none absolute -right-6 -top-10 select-none text-[10rem] font-bold leading-none text-primary/5 sm:text-[14rem]"
-        >
-          友
-        </div>
+          width={573}
+          height={320}
+          priority
+          draggable={false}
+          className="pointer-events-none absolute -right-10 -top-12 h-56 w-auto select-none opacity-15 sm:-right-6 sm:-top-16 sm:h-80"
+        />
         <div className="relative flex flex-col gap-2">
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary/80">
             <Sparkles className="size-3.5" />
