@@ -96,3 +96,14 @@
   0%, 100% { opacity: 0.9; }
   50% { opacity: 0.15; }
 }
+
+/* Gentle float for the dashboard mascot — subtle so it reads as alive,
+   not distracting. */
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.animate-float {
+  animation: float-y 3.5s ease-in-out infinite;
+}

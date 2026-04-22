@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import {
   ArrowRight,
   BookOpen,
+  Coins,
+  Flame,
   GraduationCap,
   Layers,
   Library,
@@ -53,6 +55,57 @@ export default async function DashboardPage() {
 
   const quizzesLabel =
     recentAttempts.length === 10 ? "10+" : recentAttempts.length.toString();
+
+  // Time-of-day greeting tuned to the user's local hour. Server renders
+  // UTC; we approximate with UTC and accept the small regional drift.
+  const now = new Date();
+  const hour = now.getUTCHours();
+  const timeGreeting =
+    hour < 5 || hour >= 22
+      ? "Burning the midnight oil"
+      : hour < 12
+        ? "Good morning"
+        : hour < 17
+          ? "Good afternoon"
+          : "Good evening";
+
+  // Calendar masthead label: "Wednesday, April 22 · Morning"
+  const dateLabel = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(now);
+  const partOfDay =
+    hour < 5 || hour >= 22
+      ? "Late night"
+      : hour < 12
+        ? "Morning"
+        : hour < 17
+          ? "Afternoon"
+          : "Evening";
+
+  // Quest progress drives the hero's adaptive copy + CTA.
+  const completedQuests = quests.filter((q) => q.completed).length;
+  const allQuestsDone = completedQuests === quests.length;
+  const questPct = Math.round((completedQuests / quests.length) * 100);
+  const heroSubtitle = allQuestsDone
+    ? `All ${quests.length} daily quests complete · +${coinSummary.earnedToday} coins earned`
+    : completedQuests > 0
+      ? `${completedQuests} of ${quests.length} quests done · ${questPct}% there`
+      : streak.current > 0
+        ? `Keep your ${streak.current}-day streak alive`
+        : wordCount === 0
+          ? "Add some words to begin your journey"
+          : "Start today's first quest";
+
+  const heroCta = allQuestsDone
+    ? { label: "View progress", href: "/progress" }
+    : completedQuests > 0
+      ? { label: "Keep going", href: "/study" }
+      : wordCount === 0
+        ? { label: "Browse categories", href: "/categories" }
+        : { label: "Start now", href: "/study" };
 
   const stats: StatItem[] = [
     {
@@ -114,30 +167,109 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <div className="space-y-10">
-      <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/15 via-background to-background p-6 sm:p-8">
-        <Image
-          src="/tomodachi-logo.svg"
-          alt=""
+    <div className="space-y-8">
+      {/* Daily Card — structured like a journal entry for today:
+          [meta strip] · [mascot + greeting] · [quest tracker + CTA].
+          State (amber → emerald) colors the dots and CTA as the day
+          progresses, so the card visibly responds to progress. */}
+      <section className="relative overflow-hidden rounded-2xl border bg-card shadow-sm">
+        {/* Warm ambient glow anchored to the mascot side. */}
+        <div
           aria-hidden
-          width={573}
-          height={320}
-          priority
-          draggable={false}
-          className="pointer-events-none absolute -right-10 -top-12 h-56 w-auto select-none opacity-15 sm:-right-6 sm:-top-16 sm:h-80"
+          className="pointer-events-none absolute -left-16 top-1/2 size-56 -translate-y-1/2 rounded-full bg-orange-500/15 blur-3xl"
         />
-        <div className="relative flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary/80">
-            <Sparkles className="size-3.5" />
-            Dashboard
+
+        {/* Meta strip — calendar context on the left, quiet counters on the right. */}
+        <div className="relative flex items-center justify-between border-b bg-muted/30 px-5 py-2 text-xs sm:px-6">
+          <span className="truncate text-muted-foreground">
+            <span className="font-medium text-foreground/80">{dateLabel}</span>
+            <span className="mx-1.5 text-muted-foreground/60">·</span>
+            <span>{partOfDay}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-3">
+            <span
+              className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-300"
+              title={`${streak.current}-day streak`}
+            >
+              <Flame className="size-3.5" />
+              <span className="font-semibold tabular-nums">
+                {streak.current}
+              </span>
+            </span>
+            <span
+              className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-300"
+              title={`${coinSummary.balance.toLocaleString()} coins`}
+            >
+              <Coins className="size-3.5" />
+              <span className="font-semibold tabular-nums">
+                {coinSummary.balance.toLocaleString()}
+              </span>
+            </span>
+          </span>
+        </div>
+
+        {/* Main — companion on the left, adaptive greeting + concrete state on the right. */}
+        <div className="relative flex items-center gap-5 px-5 py-5 sm:gap-6 sm:px-6 sm:py-6">
+          <Image
+            src="/Dachi-mascot.png"
+            alt=""
+            aria-hidden
+            width={240}
+            height={240}
+            priority
+            draggable={false}
+            className="size-24 shrink-0 select-none drop-shadow-[0_10px_18px_rgba(251,146,60,0.4)] animate-float sm:size-28"
+          />
+          <div className="min-w-0 flex-1 space-y-1">
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+              {timeGreeting},{" "}
+              <span className="text-primary">{firstName}</span>
+              <span className="text-foreground/70">.</span>
+            </h1>
+            <p className="text-sm text-foreground/70 sm:text-base">
+              {heroSubtitle}
+            </p>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Hi {firstName}, ready to study?
-          </h1>
-          <p className="max-w-2xl text-muted-foreground sm:text-lg">
-            Your library, your pace. Build it from N5 categories or your own
-            imports — then drill with audio-first flashcards and timed quizzes.
-          </p>
+        </div>
+
+        {/* Action strip — segmented quest tracker (one dot per quest) + single adaptive CTA. */}
+        <div className="relative flex flex-col gap-3 border-t bg-muted/20 px-5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-1.5">
+              {quests.map((q) => (
+                <span
+                  key={q.id}
+                  title={q.title}
+                  aria-label={`${q.title}${q.completed ? " — done" : ""}`}
+                  className={cn(
+                    "size-2.5 rounded-full ring-2 ring-offset-0 transition-colors",
+                    q.completed
+                      ? allQuestsDone
+                        ? "bg-emerald-500 ring-emerald-500/25"
+                        : "bg-amber-500 ring-amber-500/25"
+                      : "bg-transparent ring-muted-foreground/30",
+                  )}
+                />
+              ))}
+            </div>
+            <span className="text-xs font-medium text-muted-foreground tabular-nums">
+              {allQuestsDone
+                ? "All daily quests complete"
+                : `${completedQuests} of ${quests.length} quests · ${questPct}%`}
+            </span>
+          </div>
+          <Link
+            href={heroCta.href}
+            className={cn(
+              "group inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition-all hover:-translate-y-0.5",
+              allQuestsDone
+                ? "bg-emerald-500 text-white shadow-emerald-500/20 hover:shadow-emerald-500/30"
+                : "bg-primary text-primary-foreground shadow-primary/20 hover:shadow-primary/30",
+            )}
+          >
+            {heroCta.label}
+            <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+          </Link>
         </div>
       </section>
 
