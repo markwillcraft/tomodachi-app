@@ -33,19 +33,33 @@ export default async function DashboardPage() {
 
   const user = await currentUser()
 
-  const [wordCount, recentAttempts, streak, quests, coinSummary, prefs] =
-    await Promise.all([
-      prisma.word.count({ where: { userId } }),
-      prisma.quizAttempt.findMany({
-        where: { userId },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-      }),
-      getStreak(userId),
-      getDailyQuests(userId),
-      getCoinSummary(userId),
-      getUserPreferences(userId),
-    ])
+  const [
+    wordCount,
+    recentAttempts,
+    quizCount,
+    streak,
+    quests,
+    coinSummary,
+    prefs,
+  ] = await Promise.all([
+    prisma.word.count({ where: { userId } }),
+    // Last 10 attempts feed the rolling-accuracy stat. We only need
+    // total/correct here; skipping the JSON `questions` blob keeps the
+    // payload tiny.
+    prisma.quizAttempt.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: { total: true, correct: true },
+    }),
+    // Lifetime count for the "Quizzes taken" stat — Postgres handles
+    // this in O(index) so it stays cheap as history grows.
+    prisma.quizAttempt.count({ where: { userId } }),
+    getStreak(userId),
+    getDailyQuests(userId),
+    getCoinSummary(userId),
+    getUserPreferences(userId),
+  ])
   const totalAnswered = recentAttempts.reduce((s, a) => s + a.total, 0)
   const totalCorrect = recentAttempts.reduce((s, a) => s + a.correct, 0)
   const recentAccuracy =
@@ -59,8 +73,7 @@ export default async function DashboardPage() {
     user?.emailAddresses[0]?.emailAddress.split("@")[0] ??
     "there"
 
-  const quizzesLabel =
-    recentAttempts.length === 10 ? "10+" : recentAttempts.length.toString()
+  const quizzesLabel = quizCount.toLocaleString()
 
   // Quest progress drives the hero's adaptive copy + CTA.
   const completedQuests = quests.filter((q) => q.completed).length
@@ -108,7 +121,12 @@ export default async function DashboardPage() {
       value: quizzesLabel,
       icon: TrendingUp,
       tone: "amber",
-      hint: recentAttempts.length === 0 ? "None yet" : "Recent activity",
+      hint:
+        quizCount === 0
+          ? "None yet"
+          : quizCount === 1
+            ? "All-time · keep going"
+            : "All-time attempts",
     },
   ]
 

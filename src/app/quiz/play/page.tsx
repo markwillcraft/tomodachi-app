@@ -51,6 +51,20 @@ type UnlockedAchievement = {
   icon: string;
 };
 
+type SrsOutcome = {
+  questionIdx: number;
+  itemType: "vocab" | "kanji" | "kana";
+  itemKey: string;
+  prevLevel: number;
+  level: number;
+  isNew: boolean;
+  leveledUp: boolean;
+  reset: boolean;
+  mastered: boolean;
+  totalCorrect: number;
+  totalSeen: number;
+};
+
 const LETTERS = ["A", "B", "C", "D"];
 
 function formatMs(ms: number): string {
@@ -69,6 +83,7 @@ export default function PlayPage() {
   const [tips, setTips] = useState<string[] | null>(null);
   const [tipsLoading, setTipsLoading] = useState(false);
   const [newlyUnlocked, setNewlyUnlocked] = useState<UnlockedAchievement[]>([]);
+  const [srsOutcomes, setSrsOutcomes] = useState<SrsOutcome[]>([]);
 
   // Per-question timer. We capture the timestamp the question rendered and
   // diff against the moment the user picks an answer. In training mode we
@@ -181,10 +196,14 @@ export default function PlayPage() {
       if (res.ok) {
         const data = (await res.json()) as {
           newlyUnlocked?: UnlockedAchievement[];
+          srs?: SrsOutcome[];
         };
         if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
           setNewlyUnlocked(data.newlyUnlocked);
           feedback.correct();
+        }
+        if (Array.isArray(data.srs)) {
+          setSrsOutcomes(data.srs);
         }
       }
     } catch {}
@@ -223,6 +242,8 @@ export default function PlayPage() {
         tipsLoading={tipsLoading}
         training={training}
         newlyUnlocked={newlyUnlocked}
+        mode={mode}
+        srsOutcomes={srsOutcomes}
       />
     );
   }
@@ -385,6 +406,8 @@ function ResultsView({
   tipsLoading,
   training,
   newlyUnlocked,
+  mode,
+  srsOutcomes,
 }: {
   answers: Answer[];
   total: number;
@@ -393,7 +416,29 @@ function ResultsView({
   tipsLoading: boolean;
   training: boolean;
   newlyUnlocked: UnlockedAchievement[];
+  mode: string;
+  srsOutcomes: SrsOutcome[];
 }) {
+  // Index outcomes by question position so per-item rows can pull
+  // their post-answer mastery without scanning the full array.
+  const outcomeByIdx = useMemo(() => {
+    const map = new Map<number, SrsOutcome>();
+    for (const o of srsOutcomes) map.set(o.questionIdx, o);
+    return map;
+  }, [srsOutcomes]);
+
+  // Kana quizzes get a dedicated per-item breakdown showing time +
+  // mastery delta — Anki-style review log so users can see exactly
+  // which character they're improving on.
+  const isKanaQuiz =
+    !training &&
+    (mode === "hiragana" ||
+      mode === "katakana" ||
+      answers.some(
+        (a) =>
+          a.question.kind === "hiragana_char" ||
+          a.question.kind === "katakana_char",
+      ));
   const pct = total === 0 ? 0 : Math.round((correct / total) * 100);
   const wrong = useMemo(
     () => answers.filter((a) => !a.isCorrect),
@@ -520,6 +565,101 @@ function ResultsView({
         </Card>
       )}
 
+      {isKanaQuiz && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="size-4" />
+              Kana breakdown
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Each character with how long you took and where it sits in
+              your spaced-repetition schedule.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto -mx-2 sm:mx-0">
+              <table className="w-full min-w-[34rem] text-sm">
+                <thead>
+                  <tr className="border-b text-xs uppercase tracking-wider text-muted-foreground">
+                    <th className="px-2 py-2 text-left font-medium">#</th>
+                    <th className="px-2 py-2 text-left font-medium">Kana</th>
+                    <th className="px-2 py-2 text-left font-medium">
+                      Your answer
+                    </th>
+                    <th className="px-2 py-2 text-right font-medium">Time</th>
+                    <th className="px-2 py-2 text-right font-medium">
+                      Mastery
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {answers.map((a, i) => {
+                    const outcome = outcomeByIdx.get(i);
+                    const correctText =
+                      a.question.choices[a.question.correctIndex];
+                    const pickedText = a.question.choices[a.pickedIndex];
+                    return (
+                      <tr
+                        key={i}
+                        className="border-b last:border-b-0 align-middle"
+                      >
+                        <td className="px-2 py-3 text-muted-foreground tabular-nums">
+                          {i + 1}
+                        </td>
+                        <td className="px-2 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="jp text-2xl font-bold">
+                              {a.question.prompt}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              → {correctText}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-2 py-3">
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium",
+                              a.isCorrect
+                                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                : "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+                            )}
+                          >
+                            {a.isCorrect ? (
+                              <Check className="size-3" />
+                            ) : (
+                              <X className="size-3" />
+                            )}
+                            {pickedText}
+                          </span>
+                        </td>
+                        <td className="px-2 py-3 text-right tabular-nums">
+                          <Badge
+                            variant={
+                              a.timeMs > 5000
+                                ? "destructive"
+                                : a.timeMs > 2500
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                          >
+                            {formatMs(a.timeMs)}
+                          </Badge>
+                        </td>
+                        <td className="px-2 py-3 text-right">
+                          <SrsCell outcome={outcome} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {!training && slowest.length > 0 && (
         <Card>
           <CardHeader>
@@ -585,6 +725,58 @@ function ResultsView({
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+// Map SRS levels (1..6) to a short human label and a tone class so the
+// kana breakdown can show "Learning · L2 → L3" with the right color.
+const SRS_LABEL: Record<number, string> = {
+  1: "New",
+  2: "Learning",
+  3: "Reviewing",
+  4: "Familiar",
+  5: "Familiar+",
+  6: "Mastered",
+};
+
+function srsTone(level: number): string {
+  if (level >= 6)
+    return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30";
+  if (level >= 4)
+    return "bg-violet-500/15 text-violet-700 dark:text-violet-300 border-violet-500/30";
+  if (level >= 3)
+    return "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30";
+  return "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30";
+}
+
+function SrsCell({ outcome }: { outcome: SrsOutcome | undefined }) {
+  if (!outcome) {
+    return (
+      <span className="text-xs text-muted-foreground">—</span>
+    );
+  }
+  const label = SRS_LABEL[outcome.level] ?? `L${outcome.level}`;
+  const tone = srsTone(outcome.level);
+  const moved = outcome.level !== outcome.prevLevel;
+  return (
+    <div className="inline-flex flex-col items-end gap-1">
+      <span
+        className={cn(
+          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium tabular-nums",
+          tone,
+        )}
+      >
+        {outcome.mastered && <Trophy className="size-3" />}
+        {label}
+      </span>
+      <span className="text-[10px] text-muted-foreground tabular-nums">
+        {outcome.isNew
+          ? `New · L${outcome.level}`
+          : moved
+            ? `L${outcome.prevLevel} → L${outcome.level}`
+            : `L${outcome.level}`}
+      </span>
     </div>
   );
 }

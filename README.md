@@ -1,102 +1,523 @@
-# Japanese Quiz
+# Tomodachi — Japanese Study Buddy
 
-A multi-tenant Next.js app that turns your own list of romaji into personalized
-Japanese quizzes. Sign in with Clerk (Google, email, or any other social
-provider you enable), build vocab from JLPT N5 categories or imported text,
-then drill yourself with multiple-choice questions while the app tracks
-accuracy **and** time-per-question for every word.
+A self-hosted, multi-tenant JLPT N5 study app built on Next.js 16 (App Router).
+Sign in with Clerk, build vocab from a curated catalog or your own imports, and
+drill yourself with timed quizzes, kanji stroke-order practice, kana drills, and
+grammar lessons. The app gamifies learning with a streak, a coin economy, daily
+quests, achievements, and an SRS scheduler — all so the next session feels worth
+opening.
 
-## Features
+This README is the canonical reference for everything the app does and *how* it
+does it. If you change behavior in code, update the matching section here.
 
-- **Clerk authentication** — Google sign-in, email, magic links — whatever you
-  toggle on in the Clerk dashboard. Each user has their own vocabulary
-  library, quiz history, and progress.
-- **Three ways to build vocab**:
-  1. JLPT N5 categories (Greetings, Numbers, Days & Time, Family, Colors,
-     Food & Drink, Places, Verbs, Adjectives, Pronouns) — pick one or click
-     "Add all".
-  2. Bulk import (paste or upload `.txt`) with auto-enrichment for hiragana,
-     katakana, and English meaning via Google Gemini.
-  3. Inline edits to your library.
-- **Quiz modes**: Vocabulary, Hiragana, Katakana, Mixed.
-- **Per-question timing**: every answer is timestamped so you can see which
-  words you know correctly but still hesitate on.
-- **Progress dashboard**:
-  - Accuracy over time (line chart)
-  - Accuracy by mode
-  - Weakest words (lowest accuracy)
-  - Slowest words (longest avg recall time)
-  - AI study tips from Gemini
-- Smart sampling weights weak words more heavily in vocab/mixed mode.
+---
+
+## Table of contents
+
+1. [Stack](#stack)
+2. [Local setup](#local-setup)
+3. [Deploy to Vercel](#deploy-to-vercel)
+4. [Feature reference](#feature-reference)
+   - [Authentication & multi-tenancy](#authentication--multi-tenancy)
+   - [Vocabulary library](#vocabulary-library)
+   - [Study modes](#study-modes)
+   - [Quiz engine](#quiz-engine)
+   - [Spaced Repetition (SRS)](#spaced-repetition-srs)
+   - [Streak & daily goal](#streak--daily-goal)
+   - [Streak Freeze](#streak-freeze)
+   - [Coins](#coins)
+   - [Daily quests](#daily-quests)
+   - [Achievements](#achievements)
+   - [N5 Mastery paths](#n5-mastery-paths)
+   - [Quick Actions](#quick-actions)
+   - [Progress page](#progress-page)
+   - [Settings & timezone](#settings--timezone)
+5. [Data model](#data-model)
+6. [API surface](#api-surface)
+7. [Performance notes](#performance-notes)
+8. [Conventions](#conventions)
+
+---
 
 ## Stack
 
-- Next.js 14 (App Router) + TypeScript
-- Tailwind CSS + shadcn/ui (Radix primitives, lucide-react icons)
-- **Clerk** (`@clerk/nextjs` v6) for auth
-- **Prisma + Postgres** (Neon recommended for free serverless)
-- `wanakana` for romaji ↔ kana
-- `@google/generative-ai` (model: `gemini-flash-latest`)
-- `recharts` for charts
+| Layer | Choice |
+|---|---|
+| Framework | **Next.js 16** (App Router, React 19, Server Components by default) |
+| Language | TypeScript (strict) |
+| Styling | Tailwind CSS + shadcn/ui (Radix primitives, lucide-react icons) |
+| Auth | **Clerk** (`@clerk/nextjs`) — Google / email / magic links |
+| DB | **Postgres** via **Prisma** ORM. Neon (serverless) recommended in prod |
+| AI | **Google Gemini** (`gemini-flash-latest`) for romaji enrichment + study tips |
+| Romaji ↔ kana | `wanakana` |
+| Charts | `recharts` |
+| Speech | Browser Web Speech API (`speechSynthesis`) |
+| Top-loader | `nextjs-toploader` |
+
+---
 
 ## Local setup
 
-You need three free things:
+You need three free accounts:
 
-1. **Postgres database**. Easiest: [Neon](https://neon.tech) → create a
-   project → copy the pooled connection string. Or run a local Postgres.
-2. **Clerk app**. Sign up at [dashboard.clerk.com](https://dashboard.clerk.com),
-   create an application, enable the sign-in methods you want (Google is one
-   click). Copy the **Publishable key** and **Secret key** from the API Keys
-   page.
-3. **Gemini API key** at
-   [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey).
+1. **Postgres** — easiest is [Neon](https://neon.tech). Create a project, copy the
+   pooled connection string.
+2. **Clerk** — [dashboard.clerk.com](https://dashboard.clerk.com) → create an
+   application → enable Google + email. Copy the **Publishable** and **Secret**
+   keys from API Keys.
+3. **Gemini** — [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey).
 
 Then:
 
 ```bash
 npm install
 cp .env.example .env
-# Fill in DATABASE_URL, NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY,
-# GEMINI_API_KEY
-npx prisma migrate dev --name init
+# Fill in:
+#   DATABASE_URL
+#   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+#   CLERK_SECRET_KEY
+#   GEMINI_API_KEY
+npx prisma migrate deploy
 npm run dev
 ```
 
 Open <http://localhost:3000>, click **Sign up**, and you're in.
 
-## Deploy to Vercel (free)
+> First-run tip: visit **N5 Categories** and "Add all" — you'll have a working
+> vocabulary library in one click.
 
-1. Push this repo to GitHub.
-2. In **Vercel** → New Project → import the repo.
-3. Add these environment variables in the Vercel project settings:
-   - `DATABASE_URL` — your Neon Postgres connection string.
-   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`.
-   - `NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in`,
-     `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up`,
-     `NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/dashboard`,
-     `NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/dashboard`.
-   - `GEMINI_API_KEY`.
-4. In the **Clerk dashboard** → Domains, add your Vercel domain (e.g.
-   `your-app.vercel.app`). For production sign-in with Google, also add the
-   prod domain to the Google OAuth consent screen if you customized it.
-5. The first deploy will run `prisma generate` automatically (via the
-   `postinstall` script). Run migrations against the production DB once with:
+---
+
+## Deploy to Vercel
+
+1. Push to GitHub.
+2. **New Project** → import the repo on Vercel.
+3. Add env vars in **Project Settings → Environment Variables**:
+   - `DATABASE_URL`
+   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`
+   - `NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in`
+   - `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up`
+   - `NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/dashboard`
+   - `NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/dashboard`
+   - `GEMINI_API_KEY`
+4. **Clerk dashboard → Domains** — add your `*.vercel.app` (and a custom
+   domain if you have one). For Google sign-in in production, list the domain
+   on the Google OAuth consent screen too.
+5. `prisma generate` runs automatically via `postinstall`. Run migrations
+   against the prod DB once:
 
    ```bash
    DATABASE_URL="<your-neon-url>" npx prisma migrate deploy
    ```
 
-That's it — sign up on the deployed site and your data is private to your
-account.
+---
 
-## Notes
+## Feature reference
 
-- All data models (`Word`, `QuizAttempt`, `QuestionResult`) are scoped by
-  `userId` (a Clerk user id like `user_2abc...`). API routes enforce this via
-  `requireUserId()` in `src/lib/auth-utils.ts`.
-- The N5 catalog is static TypeScript data in `src/lib/categories.ts` so no
-  separate seed step is needed in production.
-- Optional: hook up a Clerk webhook at `/api/webhooks/clerk` to delete a
-  user's `Word`/`QuizAttempt` rows when the user is deleted in Clerk. Without
-  this, deleted-user data lingers in Postgres but is unreachable.
+### Authentication & multi-tenancy
+
+- **Clerk** owns the user record (Google OAuth, email, magic links — anything you
+  enable on the dashboard). The app never stores PII locally.
+- Every domain table has a `userId` column holding the Clerk id (`user_2abc…`).
+  All API handlers funnel through `requireUserId()` (`src/lib/auth-utils.ts`)
+  before any DB read or write.
+- Middleware in `src/middleware.ts` gates protected routes; unauthenticated
+  visitors land on `/sign-in`.
+- **Optional**: hook a Clerk webhook at `/api/webhooks/clerk` to delete a user's
+  rows when the user is deleted in Clerk. Without it, deleted-user data lingers
+  in Postgres but is unreachable.
+
+### Vocabulary library
+
+Three ways to build your library, all writing to the `Word` table:
+
+1. **N5 Categories** (`/categories`). A static catalog (`src/lib/categories.ts`)
+   of JLPT N5 vocab grouped by theme — Greetings, Numbers, Days & Time, Family,
+   Colors, Food & Drink, Places, Verbs, Adjectives, Pronouns, etc. Pick any
+   category or "Add all" — these become an `ImportBatch` with `source = "category"`.
+2. **Bulk import** (`/import`). Paste or upload a `.txt` of romaji lines.
+   Gemini enriches each line into `{ romaji, hiragana, katakana, english }`
+   via `src/lib/enrich.ts`. Failures fall back to `wanakana` for the kana
+   conversion. Tracked as `source = "import"`.
+3. **Inline edits** anywhere a vocab card is shown.
+
+Words are deduped per user via `@@unique([userId, romaji])`.
+
+### Study modes
+
+The Study hub (`/study`) is the main "do something" page. It has:
+
+- **Quick Actions strip** (see [Quick Actions](#quick-actions)).
+- **Streak widget** with today's progress + the 30-day calendar.
+- **Spaced review** card — only shown when you have items due via SRS, with
+  a "Review N now" CTA that loads them straight into the quiz engine.
+- **Five study cards**:
+  - **Kana table** (`/study/kana`) — interactive hiragana + katakana gojūon
+    grid. Tap a cell to play it; toggle romaji to self-test. Every tap also
+    fires `/api/kana/view` so the N5 modal can mark that character as **Started**.
+  - **Vocab cards** (`/study/vocab`) — flip romaji ↔ kana ↔ meaning, with native
+    audio. Logs a `CardView` on flip / audio play / dwell ≥1.2s.
+  - **N5 grammar** (`/study/grammar`) — color-coded particles & sentence
+    patterns; tap any word to hear it.
+  - **N5 kanji** (`/study/kanji/[char]`) — animated stroke order, on'yomi /
+    kun'yomi audio, themed sections. Logs a `KanjiView` on dwell / audio.
+  - **Muscle memory** (`/study/muscle-memory`) — typing-trainer drill: type the
+    romaji as kana scroll past. Awards coins via `/api/study/kana-drill`.
+
+### Quiz engine
+
+Quiz hub at `/quiz`, play screen at `/quiz/play`. Specialized launchers:
+`/quiz/kana`, `/quiz/vocab`, `/quiz/kanji`.
+
+**Question kinds** (`src/lib/quiz.ts`):
+
+| Kind | Prompt | Answer |
+|---|---|---|
+| `kana_to_romaji` | hiragana/katakana | romaji |
+| `romaji_to_english` | romaji | English |
+| `romaji_to_kana` | romaji | hiragana/katakana |
+| `hiragana_char` | hiragana | romaji |
+| `katakana_char` | katakana | romaji |
+| `kanji_to_meaning` | kanji | English meaning |
+| `kanji_to_reading` | kanji | reading |
+| `meaning_to_kanji` | English | kanji |
+
+**Generation** (`/api/quiz/generate`) builds a multiple-choice set with
+plausible distractors and a smart sampling weight — items the user has missed
+recently (low SRS level / recent wrong answers) appear more often.
+
+**Submission** (`/api/quiz/submit`):
+
+- Inserts a `QuizAttempt` plus one `QuestionResult` per answered question
+  (`prompt`, `correct`, `picked`, `isCorrect`, `timeMs`).
+- Calls `recordReview()` for each result that maps to an SRS item.
+- Awards coins (`COIN_RULES.quizBase + perCorrect + bonuses`).
+- Calls `evaluateAchievements()` so the results screen can toast freshly
+  unlocked milestones.
+- Returns `{ attemptId, summary, coinsAwarded, newlyUnlocked, outcomes }`
+  for the rich result screen (per-item mastery deltas).
+
+### Spaced Repetition (SRS)
+
+Implemented in `src/lib/srs.ts`. Leitner-style with **6 levels**:
+
+| Level | Interval until next due | Label |
+|---:|---|---|
+| 1 | 15 min | New / just missed |
+| 2 | 20 h | Learning |
+| 3 | 3 d | Reviewing |
+| 4 | 7 d | Familiar |
+| 5 | 16 d | Confident |
+| **6** | 45 d | **Mastered** |
+
+**Rules:**
+
+- Levels only advance via correct **quiz** answers. Studying (viewing kana,
+  flipping cards, watching stroke order) does **not** level anything up.
+- A wrong quiz answer resets the item to **L1** so it re-enters the rotation
+  fast.
+- `getDueCount()` and `getMasteryBuckets()` power the Spaced Review card on
+  the Study hub.
+- "**Started**" is a separate, lighter state shown in the N5 mastery modal:
+  the item has at least one study interaction (`KanaView`, `KanjiView`, or
+  `CardView`) but no SRS row yet. Once the user is quizzed and gets `level >= 1`,
+  the SRS level becomes the source of truth and Started is suppressed.
+
+### Streak & daily goal
+
+Implemented in `src/lib/streak.ts`. A **day counts** when the user does **both**:
+
+1. Answers ≥ `DAILY_QUIZ_GOAL` (50) quiz questions.
+2. Views ≥ `DAILY_CARD_GOAL` (50) vocab cards in study.
+
+Day boundaries are the user's **local midnight** (Intl timezone resolved on
+first sign-in, persisted on `UserProfile.timezone`). Missed days break the
+streak unless protected by a [Streak Freeze](#streak-freeze).
+
+The **Streak widget** (sidebar + study page) shows current streak, a
+30-day calendar (✅ goal hit, 🛡 frozen, ❌ missed), and progress toward today's
+two requirements.
+
+### Streak Freeze
+
+Auto-protection so a single missed day doesn't blank out a long run.
+
+- **Earn**: 1 freeze granted at the start of every ISO week (Mon 00:00 local).
+- **Cap**: at most `MAX_STORED_FREEZES` (2) unclaimed freezes per user — keeps
+  it a safety net rather than an exploit.
+- **Spend**: by default, `reconcileStreakFreezes()` runs on every page load and
+  auto-burns one freeze on yesterday's miss if the day failed.
+- **Manual mode**: toggle "Auto-freeze streak" off in Settings to spend freezes
+  yourself from the streak calendar.
+
+### Coins
+
+Append-only ledger (`CoinLedger`) — every grant/spend writes one row. Balance
+is `SUM(amount)`. Today's earnings are `SUM(amount) WHERE createdAt >= local-midnight`.
+
+Reward table (`COIN_RULES` in `src/lib/coins.ts`):
+
+| Action | Reward |
+|---|---|
+| Take a quiz (≥1 question) | +5 base |
+| Per correct quiz answer | +1 |
+| ≥90% accuracy on a ≥5-question quiz | +10 |
+| 100% accuracy on a ≥5-question quiz | +20 (stacks with above) |
+| Vocab card studied | +1, capped at 50/day |
+| Kanji studied | +1, capped at 50/day |
+| Kana drill base | +5 |
+| Per correct in kana drill | +1 |
+| Perfect kana drill (≥10 questions) | +20 |
+| Daily quests | see below |
+
+**Idempotency**: every grant has a `dedupKey` enforced via a unique constraint
+(e.g. `quiz:<attemptId>`, `quest:<localDay>:<questId>`). Retries are safe.
+
+### Daily quests
+
+A handful of higher-value goals that reset at local midnight. Defined in
+`DAILY_QUEST_DEFS`:
+
+| Quest | Target | Reward |
+|---|---|---|
+| Take a quiz | 1 quiz | +25 |
+| Answer 50 quiz questions | 50 | +50 |
+| Study 50 vocab cards | 50 | +50 |
+| Ace a quiz (≥90%) | 1 | +50 |
+| (extras may be added in `coins.ts`) | | |
+
+`getDailyQuests()` computes progress; the dashboard surfaces them in the
+**Daily quests** card. Rewards are auto-claimed when crossed
+(`syncTodaysCoins()`), with the dedup key `quest:<YYYY-MM-DD>:<questId>`.
+
+### Achievements
+
+One-time milestone catalog in `src/lib/achievements.ts`. Each achievement has
+a stable `id` (rename = re-lock — don't), an icon, a `kind`, and a numeric
+`goal`. The `Achievement` table records which the user has claimed
+(`@@unique(userId, achievementId)` makes evaluation idempotent).
+
+**Categories**: streak · quiz · study · mastery · rewards · milestone.
+
+**Kinds** map to counters computed in `computeCounters()`:
+
+- `streak_current` / `streak_longest`
+- `total_quizzes` / `total_questions` / `perfect_quizzes`
+- `coins_earned`
+- `cards_viewed` (counted as **distinct words** studied, not raw view counts)
+- `kanji_chars_seen` (distinct chars across all kanji-related quiz prompts)
+- `srs_mastered` (sum of all `level >= MAX_SRS_LEVEL` items)
+- `kana_mastered` / `kanji_mastered` / `vocab_mastered`
+- `n5_grand` (the headline; see below)
+
+**Evaluation**:
+
+- `evaluateAchievements()` is canonically fired by:
+  - `POST /api/quiz/submit` — so the results screen can toast unlocks.
+  - `getAchievementsProgress()` (the Achievements page itself) — self-heals
+    study-only unlocks that didn't pass through a quiz.
+- It used to also fire fire-and-forget on every page load; that ran ~10 DB
+  queries per navigation for unlocks no other surface displayed, so it was
+  removed.
+
+The Achievements page (`/achievements`) shows:
+
+- **Closest to unlocking** — ranked list of in-progress achievements ordered
+  by `pct` desc, so you can see what's one step away.
+- **Achievements tabs** — All / by category, each card showing icon,
+  description, locked/unlocked state, and progress bar.
+- **N5 Grand card** — clickable, opens the **N5 Mastery modal**.
+
+### N5 Mastery paths
+
+`src/lib/n5-paths.ts` is the **single source of truth** for "how close am I
+to N5?". It models N5 as a set of **paths** (axes), each with:
+
+- a static catalog (kana / kanji / vocab / grammar)
+- a `weight` in the grand %
+- a `completion` fraction (e.g. vocab counts as "done" at 75% mastered, since
+  the catalog is huge)
+- a `status` of `live` or `coming-soon`
+
+| Path | Weight | Completion | Status |
+|---|---:|---:|---|
+| Kana | 1 | 90% | live |
+| Kanji | 1 | 100% | live |
+| Vocab | 1 | 75% | live |
+| Grammar | 1 | 100% | coming-soon |
+| Listening | 0.5 | 100% | coming-soon |
+| Writing | 0.5 | 100% | coming-soon |
+| Speaking | 0.5 | 100% | coming-soon |
+
+Coming-soon paths contribute **0 weight** to `grandPct` so the bar stays
+meaningful until they ship.
+
+The **N5 Mastery modal** (clickable from the achievements page) shows tabs
+per path. Each tab has:
+
+- A header with mastered / total / goal and an animated progress bar (1-decimal
+  precision).
+- A **Stat strip**: Mastered, Reviewing (`level 3..5`), Started, Total.
+- A **Mastery levels** legend that doubles as filter chips: All · Not started ·
+  **Started** · L1 · L2 · L3 · L4 · L5 · **L6 (Mastered)** — each chip shows
+  count and color.
+- An explanatory line: *"View or listen to tag an item as Started. Items
+  only level up L1 → L6 when you answer them correctly in a quiz."*
+- A **paginated item list** (30 per page) with character square (color-coded
+  by bucket), label, sub-label, and a level/status tag.
+
+**Adding a new path**: add an `N5PathDef` entry, point `loadCatalog()` at its
+data, optionally feed studied/level data into `getN5PathsProgress()`'s batched
+fetch, and the achievements card + modal pick it up automatically.
+
+### Quick Actions
+
+A 4-tile strip at the top of `/study` (just below the Streak widget) for
+re-entering your flow in one tap:
+
+| Tile | Target | Live data |
+|---|---|---|
+| Take a quiz | `/quiz` | Today's quiz answers / 50 (or due count if any) |
+| Daily cards | `/study/vocab` | Today's vocab views / 50 |
+| N5 progress | `/achievements` | — |
+| Recent attempts | `/progress` | — |
+
+The "Take a quiz" tile swaps to a `BrainCircuit` icon when there are SRS items
+due, hinting at the dedicated **Spaced review** section right below.
+
+### Progress page
+
+`/progress` is the analytics surface:
+
+- **Stats strip** — total attempts, lifetime questions, recent accuracy,
+  weakest/slowest counts.
+- **Accuracy over time** chart and **accuracy by mode** bars.
+- **Recent attempts table** (paginated). Click a row → drill into
+  `/progress/attempts/[id]` for the per-question breakdown (prompt, picked,
+  correct answer, time taken, ✓/✗).
+- **Weakest words** and **Slowest words** tables.
+- **AI study tips** via Gemini (`/api/progress/tips`).
+
+### Settings & timezone
+
+`/settings`:
+
+- **Timezone** — auto-detected from the browser
+  (`Intl.DateTimeFormat().resolvedOptions().timeZone`) and persisted on
+  `UserProfile.timezone`. Streaks, daily quests, and "today's earnings" all
+  bucket by **local** day.
+- **Auto-freeze streak** — toggle the Streak Freeze auto-spend behavior.
+
+---
+
+## Data model
+
+All tables are keyed by `userId` (Clerk id) for tenancy isolation.
+
+| Table | Purpose |
+|---|---|
+| `Word` | The user's vocabulary library. Unique on `(userId, romaji)`. |
+| `ImportBatch` | Groups words into named buckets (e.g. "Greetings (N5)"). |
+| `QuizAttempt` | One row per finished quiz (`mode`, `total`, `correct`). |
+| `QuestionResult` | Per-question detail (`prompt`, `picked`, `correct`, `isCorrect`, `timeMs`). |
+| `CardView` | A single vocab study interaction (flip / audio / dwell). |
+| `KanjiView` | A single kanji study interaction (audio / dwell). |
+| `KanaView` | A single kana table tap. |
+| `ReviewState` | SRS scheduling row per `(user, itemType, itemKey)`. |
+| `UserProfile` | Per-user settings (timezone, autoFreezeStreak). |
+| `StreakFreeze` | Earned/consumed protection rows. Weekly grant key. |
+| `Achievement` | Claimed milestones, dedup'd by `(userId, achievementId)`. |
+| `CoinLedger` | Append-only coin history. Balance = sum(amount). Dedup'd by `dedupKey`. |
+
+Migrations live in `prisma/migrations/`. Use `npx prisma migrate dev --name <slug>`
+when you change the schema and `npx prisma migrate deploy` in CI/prod.
+
+---
+
+## API surface
+
+All endpoints require Clerk auth via `requireUserId()` and return JSON.
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/words/import` | POST | Bulk-import romaji → enriched Word rows. |
+| `/api/words/[id]` | PATCH/DELETE | Edit or remove a single word. |
+| `/api/categories/add` | POST | Add a JLPT N5 category to the user's library. |
+| `/api/batches` | GET | List the user's import batches. |
+| `/api/cards/view` | POST | Log a vocab `CardView`. |
+| `/api/kana/view` | POST | Log a kana table tap (`KanaView`). |
+| `/api/kanji/view` | POST | Log a kanji study interaction (`KanjiView`). |
+| `/api/quiz/generate` | POST | Build a quiz set with smart sampling. |
+| `/api/quiz/submit` | POST | Persist results, advance SRS, award coins, evaluate achievements. |
+| `/api/quiz/redo-missed` | POST | Build a quiz from the user's recent misses. |
+| `/api/study/review` | GET | Fetch the user's SRS-due items as a quiz set. |
+| `/api/study/kana-drill` | POST | Award coins for the muscle-memory drill. |
+| `/api/streak/freeze` | GET | Current freeze inventory. |
+| `/api/streak/freeze/use` | POST | Spend a freeze on a specific past day. |
+| `/api/coins` | GET | Balance + today's earnings. |
+| `/api/profile/timezone` | POST | Persist the browser's IANA timezone. |
+| `/api/profile/preferences` | POST | Toggle `autoFreezeStreak` etc. |
+| `/api/progress/stats` | GET | Backing data for charts on `/progress`. |
+| `/api/progress/tips` | GET | Gemini-powered weak-spot tips. |
+
+---
+
+## Performance notes
+
+A few patterns the codebase leans on, kept here so refactors don't undo them:
+
+- **Batched parallel fetches.** Server components do one `Promise.all([...])`
+  per request and pass scalars down. See `dashboard/page.tsx`,
+  `study/page.tsx`, `getAchievementsProgress`, and `getN5PathsProgress`.
+- **One SELECT per snapshot.** `getN5PathsProgress` issues a single set of
+  parallel queries (one `ReviewState` for all item types, one each for
+  `KanaView` / `KanjiView` / `CardView`, one `Word.findMany` reused by both
+  vocab levels and vocab studied) instead of looping per path.
+- **Static catalogs are computed once at module load.** `KANA_CATALOG`,
+  `KANJI_CATALOG`, `VOCAB_CATALOG`, `GRAMMAR_CATALOG` in `n5-paths.ts` build
+  on first import and are reused forever.
+- **No fire-and-forget achievement eval in layout.** Layout used to evaluate
+  achievements on every page navigation; we removed it because the cost
+  (~10 queries per nav) only paid off for unlocks that weren't surfaced
+  outside the achievements page or the quiz results screen — both of which
+  call `evaluateAchievements()` themselves.
+- **`SELECT` projections everywhere.** Prisma queries pass `select: {...}`
+  with only the fields actually used; the `QuizAttempt.questions` JSON blob
+  in particular is heavy and never pulled when only `total/correct` are
+  needed.
+- **Distinct counts via Postgres.** `cardView.findMany({ distinct: ["wordId"] })`
+  beats pulling all rows and de-duping in JS.
+- **Coin idempotency via `dedupKey`** + DB unique constraint, so retries are
+  free and quest claims can never double-pay.
+- **Daily rollover on local midnight.** Anything date-bucketed (streak, quests,
+  today's earnings) uses `localDayKey()` from `src/lib/time.ts`, never `new Date().toDateString()` (which is a UTC concept).
+
+---
+
+## Conventions
+
+- **Don't break achievement ids.** Renaming an `id` re-locks the achievement
+  for everyone. Append new entries; never edit existing ids.
+- **Server components do the data fetching.** Client components are reserved
+  for interactivity (quiz play, kana table audio, modal state).
+- **Comments explain *why*, not *what*.** Especially in `srs.ts`, `coins.ts`,
+  `n5-paths.ts`, and `achievements.ts` — the math has reasons.
+- **Time math always uses `src/lib/time.ts` helpers.** Local midnight, local
+  day key, IANA timezone validation — every feature with daily rollover sits
+  on this file.
+- **API handlers funnel through `requireUserId()`.** No raw `auth()` outside
+  the helper.
+
+---
+
+If something on a page feels off, the source-of-truth file is usually one of:
+
+| Surface | File |
+|---|---|
+| Streak / freezes | `src/lib/streak.ts`, `src/lib/streak-freeze.ts` |
+| Coins / quests | `src/lib/coins.ts` |
+| SRS scheduling | `src/lib/srs.ts` |
+| Achievements catalog | `src/lib/achievements.ts` |
+| N5 Mastery model | `src/lib/n5-paths.ts` |
+| Quiz generation | `src/lib/quiz.ts` |
+| Time / timezone | `src/lib/time.ts` |

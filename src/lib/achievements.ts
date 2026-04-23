@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { getStreak } from "./streak";
 import { MAX_SRS_LEVEL } from "./srs";
+import { getN5PathGoal, getN5PathsProgress } from "./n5-paths";
 
 // =====================================================================
 // Achievements / milestones
@@ -124,17 +125,23 @@ const PERFECT_QUIZZES: AchievementDef[] = [
   { id: "perfect_250", title: "Perfectly calibrated", description: "Score 100% on 250 quizzes.", icon: "💠", category: "quiz", kind: "perfect_quizzes", goal: 250 },
 ];
 
+// "cards_viewed" used to be raw CardView count, which let a user
+// inflate the number by flipping the same card over and over. We now
+// count *distinct* vocab words studied so the milestone reflects
+// vocabulary breadth instead of repetition. The N5 catalog tops out
+// at ~600 unique words, so the higher goals were lowered to remain
+// reachable; ids are intentionally kept stable so previously
+// unlocked rows stay unlocked.
 const CARDS_VIEWED: AchievementDef[] = [
-  { id: "cards_10", title: "Card-curious", description: "Study 10 vocab cards.", icon: "🃏", category: "study", kind: "cards_viewed", goal: 10 },
-  { id: "cards_25", title: "Card-comfortable", description: "Study 25 vocab cards.", icon: "🃏", category: "study", kind: "cards_viewed", goal: 25 },
-  { id: "cards_50", title: "Card-fluent", description: "Study 50 vocab cards.", icon: "🃏", category: "study", kind: "cards_viewed", goal: 50 },
-  { id: "cards_100", title: "Browser", description: "Study 100 vocab cards.", icon: "📖", category: "study", kind: "cards_viewed", goal: 100 },
-  { id: "cards_250", title: "Reader", description: "Study 250 vocab cards.", icon: "📖", category: "study", kind: "cards_viewed", goal: 250 },
-  { id: "cards_500", title: "Avid reader", description: "Study 500 vocab cards.", icon: "📖", category: "study", kind: "cards_viewed", goal: 500 },
-  { id: "cards_1000", title: "Bookworm", description: "Study 1,000 vocab cards.", icon: "📚", category: "study", kind: "cards_viewed", goal: 1000 },
-  { id: "cards_2500", title: "Library card", description: "Study 2,500 vocab cards.", icon: "📚", category: "study", kind: "cards_viewed", goal: 2500 },
-  { id: "cards_5000", title: "Walking dictionary", description: "Study 5,000 vocab cards.", icon: "📚", category: "study", kind: "cards_viewed", goal: 5000 },
-  { id: "cards_10000", title: "Card devotee", description: "Study 10,000 vocab cards.", icon: "🏛️", category: "study", kind: "cards_viewed", goal: 10000 },
+  { id: "cards_10", title: "Card-curious", description: "Study 10 unique vocab words.", icon: "🃏", category: "study", kind: "cards_viewed", goal: 10 },
+  { id: "cards_25", title: "Card-comfortable", description: "Study 25 unique vocab words.", icon: "🃏", category: "study", kind: "cards_viewed", goal: 25 },
+  { id: "cards_50", title: "Card-fluent", description: "Study 50 unique vocab words.", icon: "🃏", category: "study", kind: "cards_viewed", goal: 50 },
+  { id: "cards_100", title: "Browser", description: "Study 100 unique vocab words.", icon: "📖", category: "study", kind: "cards_viewed", goal: 100 },
+  { id: "cards_250", title: "Reader", description: "Study 200 unique vocab words.", icon: "📖", category: "study", kind: "cards_viewed", goal: 200 },
+  { id: "cards_500", title: "Avid reader", description: "Study 300 unique vocab words.", icon: "📖", category: "study", kind: "cards_viewed", goal: 300 },
+  { id: "cards_1000", title: "Bookworm", description: "Study 400 unique vocab words.", icon: "📚", category: "study", kind: "cards_viewed", goal: 400 },
+  { id: "cards_2500", title: "Library card", description: "Study 500 unique vocab words.", icon: "📚", category: "study", kind: "cards_viewed", goal: 500 },
+  { id: "cards_5000", title: "Walking dictionary", description: "Study 600 unique vocab words.", icon: "📚", category: "study", kind: "cards_viewed", goal: 600 },
 ];
 
 const KANJI_SEEN: AchievementDef[] = [
@@ -213,7 +220,7 @@ const N5_GRAND: AchievementDef[] = [
     id: "n5_master",
     title: "N5 Master",
     description:
-      "Master all 100 N5 kanji, 80+ kana, and 200+ vocab — the full N5 toolkit.",
+      "Master every N5 kanji, 90% of kana, and three-quarters of N5 vocab.",
     icon: "⛩️",
     category: "milestone",
     kind: "n5_grand",
@@ -237,12 +244,15 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   ...N5_GRAND,
 ];
 
-// Targets used by the N5 grand counter. Exposed so the progress card
-// on /achievements can render a breakdown without re-deriving them.
+// Legacy: targets for the N5 grand counter. We now derive the live
+// values from `n5-paths.ts` (single source of truth) but keep this
+// constant as a synchronous fallback for places that can't await the
+// path snapshot. Update via `getN5PathGoal()` from n5-paths.ts when
+// you change the catalog or completion ratios.
 export const N5_TARGETS = {
-  kanji: 100,
-  kana: 80,
-  vocab: 200,
+  kanji: getN5PathGoal("kanji"),
+  kana: getN5PathGoal("kana"),
+  vocab: getN5PathGoal("vocab"),
 } as const;
 
 export type AchievementProgress = AchievementDef & {
@@ -280,7 +290,7 @@ async function computeCounters(userId: string): Promise<AchievementCounters> {
     totalQuestions,
     perfectCandidates,
     coinsAgg,
-    cardsViewed,
+    distinctCardWords,
     kanjiSeenRows,
     meaningToKanjiRows,
     masteredByType,
@@ -300,7 +310,15 @@ async function computeCounters(userId: string): Promise<AchievementCounters> {
       where: { userId, amount: { gt: 0 } },
       _sum: { amount: true },
     }),
-    prisma.cardView.count({ where: { userId } }),
+    // Distinct words actually studied (unique wordIds across the user's
+    // CardView log). Replaces the old raw-view count so the milestone
+    // measures vocabulary breadth, not how many times a card was
+    // flipped.
+    prisma.cardView.findMany({
+      where: { userId },
+      select: { wordId: true },
+      distinct: ["wordId"],
+    }),
     // Distinct characters seen via "kanji_to_*" questions. Their prompt
     // *is* the kanji character.
     prisma.questionResult.findMany({
@@ -345,11 +363,16 @@ async function computeCounters(userId: string): Promise<AchievementCounters> {
 
   // Linear blend of the three N5 mastery axes. Each axis caps at 100%
   // so an over-mastered axis doesn't paper over a weak one, and the
-  // overall average reaches 100 only when *all three* are met.
+  // overall average reaches 100 only when *all three* are met. This
+  // mirrors the legacy formula; the modal/n5-paths system keeps a
+  // separate weighted/scalable computation for the per-path tabs.
   const kanjiPct = Math.min(1, kanjiMastered / N5_TARGETS.kanji);
   const kanaPct = Math.min(1, kanaMastered / N5_TARGETS.kana);
   const vocabPct = Math.min(1, vocabMastered / N5_TARGETS.vocab);
-  const n5Grand = Math.round(((kanjiPct + kanaPct + vocabPct) / 3) * 100);
+  // One-decimal precision so the bar reflects per-item mastery jumps
+  // (especially on vocab where each word is only ~0.25% of the goal).
+  const n5Grand =
+    Math.round(((kanjiPct + kanaPct + vocabPct) / 3) * 1000) / 10;
 
   return {
     streakCurrent: streak.current,
@@ -358,7 +381,7 @@ async function computeCounters(userId: string): Promise<AchievementCounters> {
     totalQuestions,
     perfectQuizzes,
     coinsEarned: coinsAgg._sum.amount ?? 0,
-    cardsViewed,
+    cardsViewed: distinctCardWords.length,
     kanjiCharsSeen: kanjiSeenChars.size,
     srsMastered,
     kanaMastered,
@@ -414,20 +437,33 @@ export type UnlockedAchievement = {
 // that were *just* unlocked (empty if nothing new) so the caller can
 // celebrate them. Safe to call from any surface: the unique constraint
 // on (userId, achievementId) deduplicates.
+//
+// Callers that already have `counters` and the existing-unlock list
+// loaded (e.g. `getAchievementsProgress`) can pass them in via
+// `precomputed` to avoid duplicating ~10 DB queries.
 export async function evaluateAchievements(
   userId: string,
+  precomputed?: {
+    counters?: AchievementCounters;
+    existingIds?: ReadonlySet<string>;
+  },
 ): Promise<UnlockedAchievement[]> {
-  const [counters, existing] = await Promise.all([
-    computeCounters(userId),
-    prisma.achievement.findMany({
-      where: { userId },
-      select: { achievementId: true },
-    }),
+  const [counters, existingIds] = await Promise.all([
+    precomputed?.counters
+      ? Promise.resolve(precomputed.counters)
+      : computeCounters(userId),
+    precomputed?.existingIds
+      ? Promise.resolve(precomputed.existingIds)
+      : prisma.achievement
+          .findMany({
+            where: { userId },
+            select: { achievementId: true },
+          })
+          .then((rows) => new Set(rows.map((r) => r.achievementId))),
   ]);
-  const already = new Set(existing.map((e) => e.achievementId));
   const toUnlock: AchievementDef[] = [];
   for (const def of ACHIEVEMENTS) {
-    if (already.has(def.id)) continue;
+    if (existingIds.has(def.id)) continue;
     if (counterFor(def.kind, counters) >= def.goal) toUnlock.push(def);
   }
   if (toUnlock.length === 0) return [];
@@ -473,6 +509,9 @@ export type AchievementsSnapshot = {
   unlockedCount: number;
   totalCount: number;
   n5: N5Snapshot;
+  // Full per-axis breakdown for the N5 mastery modal (kana, kanji,
+  // vocab, and any future paths flagged as live in n5-paths.ts).
+  n5Paths: Awaited<ReturnType<typeof getN5PathsProgress>>;
 };
 
 // Full read for the /achievements page: every catalog entry paired
@@ -483,17 +522,33 @@ export type AchievementsSnapshot = {
 export async function getAchievementsProgress(
   userId: string,
 ): Promise<AchievementsSnapshot> {
-  await evaluateAchievements(userId);
-  const [counters, existing] = await Promise.all([
+  // Pull everything we need in one parallel batch. Previously we
+  // called `evaluateAchievements` (which itself ran computeCounters +
+  // achievement.findMany) AND then re-ran computeCounters +
+  // achievement.findMany separately — duplicating ~10 DB queries on
+  // every visit to the achievements page.
+  const [counters, existing, n5Paths] = await Promise.all([
     computeCounters(userId),
     prisma.achievement.findMany({
       where: { userId },
       select: { achievementId: true, unlockedAt: true },
     }),
+    getN5PathsProgress(userId),
   ]);
-  const unlockedMap = new Map(
-    existing.map((e) => [e.achievementId, e.unlockedAt]),
-  );
+
+  // Now self-heal any newly-crossed milestones using the data we
+  // already have in memory. Inserts new rows; doesn't refetch.
+  const existingIds = new Set(existing.map((e) => e.achievementId));
+  const justUnlocked = await evaluateAchievements(userId, {
+    counters,
+    existingIds,
+  });
+  const nowMs = Date.now();
+  const unlockedMap = new Map<string, Date>();
+  for (const e of existing) unlockedMap.set(e.achievementId, e.unlockedAt);
+  for (const u of justUnlocked) {
+    if (!unlockedMap.has(u.id)) unlockedMap.set(u.id, new Date(nowMs));
+  }
   const items: AchievementProgress[] = ACHIEVEMENTS.map((def) => {
     const current = counterFor(def.kind, counters);
     const unlockedAt = unlockedMap.get(def.id) ?? null;
@@ -508,7 +563,7 @@ export async function getAchievementsProgress(
   });
   return {
     items,
-    unlockedCount: existing.length,
+    unlockedCount: unlockedMap.size,
     totalCount: ACHIEVEMENTS.length,
     n5: {
       kanji: { current: counters.kanjiMastered, target: N5_TARGETS.kanji },
@@ -516,5 +571,6 @@ export async function getAchievementsProgress(
       vocab: { current: counters.vocabMastered, target: N5_TARGETS.vocab },
       pct: counters.n5Grand,
     },
+    n5Paths,
   };
 }

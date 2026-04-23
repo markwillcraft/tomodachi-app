@@ -184,10 +184,30 @@ function KanaCell({
 
   if (!speakable) return null;
 
+  function handleTap() {
+    speakJapanese(speakable!);
+    // Fire-and-forget: log a soft "studied" signal for each character
+    // so the N5 mastery modal can mark items as "Started" before the
+    // user has been quizzed on them. Send both scripts when "both" is
+    // active so a single tap counts for both glyphs the cell shows.
+    const targets =
+      script === "both"
+        ? [hira, kata].filter((s): s is string => Boolean(s))
+        : [speakable!];
+    for (const t of targets) {
+      void fetch("/api/kana/view", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kana: t }),
+        keepalive: true,
+      }).catch(() => {});
+    }
+  }
+
   return (
     <button
       type="button"
-      onClick={() => speakJapanese(speakable)}
+      onClick={handleTap}
       className="group flex w-full flex-col items-center justify-center gap-0.5 rounded-md py-2 transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
       aria-label={`Play ${romaji}`}
       title={`Play ${romaji}`}

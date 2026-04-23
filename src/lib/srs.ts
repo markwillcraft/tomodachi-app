@@ -56,16 +56,34 @@ export function itemFromResult(
   }
 }
 
+export type ReviewOutcome = {
+  itemType: ItemType;
+  itemKey: string;
+  // Level *before* this answer was applied (1 if brand-new).
+  prevLevel: number;
+  // Level *after* this answer was applied.
+  level: number;
+  isNew: boolean;
+  leveledUp: boolean;
+  reset: boolean;
+  mastered: boolean;
+  totalCorrect: number;
+  totalSeen: number;
+  nextReviewAt: Date;
+};
+
 // Record a single quiz result against the SRS schedule. Idempotent in
 // spirit (each call advances state once) — we don't dedup on result id
 // because every quiz answer is meaningful signal. Upserts the row if
-// the item has never been seen.
+// the item has never been seen. Returns the post-update snapshot so
+// the caller (typically POST /api/quiz/submit) can surface the new
+// mastery level on the results screen.
 export async function recordReview(
   userId: string,
   itemType: ItemType,
   itemKey: string,
   isCorrect: boolean,
-): Promise<void> {
+): Promise<ReviewOutcome> {
   const existing = await prisma.reviewState.findUnique({
     where: {
       userId_itemType_itemKey: { userId, itemType, itemKey },
@@ -90,7 +108,19 @@ export async function recordReview(
         lastReviewedAt: now,
       },
     });
-    return;
+    return {
+      itemType,
+      itemKey,
+      prevLevel: 1,
+      level,
+      isNew: true,
+      leveledUp: isCorrect,
+      reset: false,
+      mastered: level >= MAX_SRS_LEVEL,
+      totalCorrect: isCorrect ? 1 : 0,
+      totalSeen: 1,
+      nextReviewAt,
+    };
   }
   const nextLevel = isCorrect
     ? Math.min(existing.level + 1, MAX_SRS_LEVEL)
@@ -109,6 +139,19 @@ export async function recordReview(
       lastReviewedAt: now,
     },
   });
+  return {
+    itemType,
+    itemKey,
+    prevLevel: existing.level,
+    level: nextLevel,
+    isNew: false,
+    leveledUp: nextLevel > existing.level,
+    reset: !isCorrect && existing.level > 1,
+    mastered: nextLevel >= MAX_SRS_LEVEL,
+    totalCorrect: existing.totalCorrect + (isCorrect ? 1 : 0),
+    totalSeen: existing.totalSeen + 1,
+    nextReviewAt,
+  };
 }
 
 export type DueItem = {

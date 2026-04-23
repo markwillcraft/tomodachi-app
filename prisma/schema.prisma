@@ -110,6 +110,21 @@ model KanjiView {
   @@index([userId, char])
 }
 
+// Logged whenever a user taps a kana cell in the reference table to
+// hear it pronounced. Like KanjiView this is a study signal — it does
+// NOT advance SRS levels (that still requires a quiz answer) but it
+// lets the N5 mastery modal show "Started" for items the user has
+// explored even before they've been quizzed on them.
+model KanaView {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  kana      String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, kana])
+}
+
 // Cached per-user profile. Today this only holds the user's IANA timezone
 // so daily-rollover features (streak, daily quests, "today's earnings")
 // happen at the user's local midnight instead of UTC. The client posts

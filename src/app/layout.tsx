@@ -15,7 +15,6 @@ import { getStreak } from "@/lib/streak";
 import { DAILY_QUIZ_GOAL, DAILY_CARD_GOAL } from "@/lib/streak";
 import { getCoinSummary, syncTodaysCoins } from "@/lib/coins";
 import { reconcileStreakFreezes } from "@/lib/streak-freeze";
-import { evaluateAchievements } from "@/lib/achievements";
 
 export const metadata: Metadata = {
   title: "Tomodachi — Japanese study buddy",
@@ -61,11 +60,15 @@ export default async function RootLayout({
         getStreak(userId),
         getCoinSummary(userId),
       ]);
-      // Fire-and-forget achievement eval. We don't block the page on it
-      // and we don't surface the unlocks here — the /achievements page
-      // is the canonical list and the quiz results screen shows toasts
-      // for fresh unlocks earned in that session.
-      evaluateAchievements(userId).catch(() => {});
+      // Achievement evaluation lives on its two canonical surfaces:
+      //   1. POST /api/quiz/submit  — fires fresh unlock toasts on the
+      //      results screen for milestones earned via quizzing.
+      //   2. /achievements page     — self-heals the catalog when the
+      //      user opens the list, so study-only unlocks (like
+      //      cards_viewed) materialize there.
+      // We deliberately removed the layout-level fire-and-forget eval:
+      // it ran ~10 DB queries on EVERY page navigation for unlocks
+      // that aren't surfaced anywhere outside those two places.
       const quizPct = Math.min(
         100,
         Math.round((s.today.quizAnswered / DAILY_QUIZ_GOAL) * 100),

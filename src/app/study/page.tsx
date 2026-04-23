@@ -2,15 +2,19 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   ArrowRight,
+  BarChart3,
   BookOpen,
   BrainCircuit,
   Brush,
+  Crown,
   Flame,
   GraduationCap,
   Keyboard,
   Languages,
+  PlayCircle,
   Sparkles,
   Upload,
+  Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { HIRAGANA, KATAKANA } from "@/lib/kana";
@@ -178,6 +182,17 @@ export default async function StudyHubPage() {
       </section>
 
       <StreakWidget {...streak} autoFreezeStreak={prefs.autoFreezeStreak} />
+
+      {/* Quick actions: surface the highest-value jumps so a returning
+          user can re-enter their flow in one tap instead of scanning
+          the full card grid. We deliberately put the quiz CTA first —
+          that's the *only* thing that levels up SRS items, while every
+          card below is "study" (which only marks items as Started). */}
+      <QuickActions
+        cardsToday={streak.today.cardsViewed}
+        quizToday={streak.today.quizAnswered}
+        dueCount={dueCount}
+      />
 
       {mastery.tracked > 0 && (
         <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-background to-background p-5 shadow-sm sm:p-6">
@@ -377,5 +392,160 @@ function StudyHubCard({ card }: { card: StudyCard }) {
         </div>
       </article>
     </Link>
+  );
+}
+
+type QuickAction = {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  // Short scalar shown big — usually a "current vs target" or a count.
+  value: string;
+  // Tiny caption below the value, e.g. "today" or "due now".
+  hint: string;
+  // Tailwind classes for the icon chip + accent ring on hover. Kept
+  // deliberately small (4 actions only) so we don't end up with a
+  // tone soup competing with the study cards below.
+  tone: {
+    iconWrap: string;
+    ring: string;
+    glow: string;
+  };
+};
+
+function QuickActions({
+  cardsToday,
+  quizToday,
+  dueCount,
+}: {
+  cardsToday: number;
+  quizToday: number;
+  dueCount: number;
+}) {
+  const cardGoal = 50;
+  const quizGoal = 50;
+
+  const actions: QuickAction[] = [
+    {
+      // Always route to the quiz hub. The review-due flow needs a
+      // client-side fetch + sessionStorage handshake, which the
+      // dedicated "Spaced review" section below handles. We surface
+      // the due count here just as a teaser so the user knows there's
+      // catch-up work waiting.
+      href: "/quiz",
+      icon: dueCount > 0 ? BrainCircuit : PlayCircle,
+      label: "Take a quiz",
+      value:
+        dueCount > 0
+          ? `${dueCount}`
+          : `${Math.min(quizToday, quizGoal)}/${quizGoal}`,
+      hint: dueCount > 0 ? "due now" : "answers today",
+      tone: {
+        iconWrap:
+          "bg-primary/15 text-primary ring-primary/30 dark:text-primary",
+        ring: "group-hover:border-primary/50 group-hover:shadow-primary/10",
+        glow: "from-primary/15 via-primary/5 to-transparent",
+      },
+    },
+    {
+      href: "/study/vocab",
+      icon: BookOpen,
+      label: "Daily cards",
+      value: `${Math.min(cardsToday, cardGoal)}/${cardGoal}`,
+      hint: cardsToday >= cardGoal ? "goal reached" : "viewed today",
+      tone: {
+        iconWrap:
+          "bg-amber-500/15 text-amber-600 ring-amber-500/30 dark:text-amber-300",
+        ring: "group-hover:border-amber-400/60 group-hover:shadow-amber-500/10",
+        glow: "from-amber-500/15 via-amber-500/5 to-transparent",
+      },
+    },
+    {
+      href: "/achievements",
+      icon: Crown,
+      label: "N5 progress",
+      value: "View",
+      hint: "mastery breakdown",
+      tone: {
+        iconWrap:
+          "bg-violet-500/15 text-violet-600 ring-violet-500/30 dark:text-violet-300",
+        ring: "group-hover:border-violet-400/60 group-hover:shadow-violet-500/10",
+        glow: "from-violet-500/15 via-violet-500/5 to-transparent",
+      },
+    },
+    {
+      href: "/progress",
+      icon: BarChart3,
+      label: "Recent attempts",
+      value: "View",
+      hint: "history & stats",
+      tone: {
+        iconWrap:
+          "bg-emerald-500/15 text-emerald-600 ring-emerald-500/30 dark:text-emerald-300",
+        ring: "group-hover:border-emerald-400/60 group-hover:shadow-emerald-500/10",
+        glow: "from-emerald-500/15 via-emerald-500/5 to-transparent",
+      },
+    },
+  ];
+
+  return (
+    <section aria-label="Quick actions">
+      <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <Zap className="size-3.5 text-primary" />
+        Quick actions
+      </div>
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+        {actions.map((a) => {
+          const Icon = a.icon;
+          return (
+            <Link
+              key={a.href + a.label}
+              href={a.href}
+              className="group block"
+            >
+              <div
+                className={cn(
+                  "relative h-full overflow-hidden rounded-xl border bg-card p-3 shadow-sm transition-all sm:p-4",
+                  "group-hover:-translate-y-0.5 group-hover:shadow-md",
+                  a.tone.ring,
+                )}
+              >
+                <div
+                  aria-hidden
+                  className={cn(
+                    "pointer-events-none absolute inset-0 bg-gradient-to-br opacity-60",
+                    a.tone.glow,
+                  )}
+                />
+                <div className="relative flex items-start justify-between gap-2">
+                  <span
+                    className={cn(
+                      "inline-flex size-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset",
+                      a.tone.iconWrap,
+                    )}
+                  >
+                    <Icon className="size-5" />
+                  </span>
+                  <ArrowRight className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
+                </div>
+                <div className="relative mt-3 min-w-0">
+                  <div className="truncate text-sm font-semibold tracking-tight">
+                    {a.label}
+                  </div>
+                  <div className="mt-0.5 flex items-baseline gap-1.5">
+                    <span className="text-base font-bold tabular-nums">
+                      {a.value}
+                    </span>
+                    <span className="truncate text-[11px] text-muted-foreground">
+                      {a.hint}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
   );
 }

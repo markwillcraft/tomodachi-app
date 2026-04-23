@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -16,6 +17,8 @@ import {
   BookOpen,
   BrainCircuit,
   Brush,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Flame,
   History,
@@ -127,11 +130,14 @@ function formatMs(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+const ATTEMPTS_PAGE_SIZE = 10;
+
 export default function ProgressPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [tips, setTips] = useState<string[] | null>(null);
   const [tipsLoading, setTipsLoading] = useState(false);
+  const [attemptsPage, setAttemptsPage] = useState(0);
 
   useEffect(() => {
     fetch("/api/progress/stats")
@@ -795,75 +801,154 @@ export default function ProgressPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex size-8 items-center justify-center rounded-lg bg-muted text-muted-foreground ring-1 ring-inset ring-border">
-              <History className="size-4" />
-            </span>
-            <div>
-              <CardTitle>Recent attempts</CardTitle>
-              <CardDescription>
-                Your last {Math.min(attempts.length, 50)} quizzes.
-              </CardDescription>
-            </div>
+      <RecentAttemptsCard
+        attempts={attempts}
+        page={attemptsPage}
+        setPage={setAttemptsPage}
+      />
+    </div>
+  );
+}
+
+function RecentAttemptsCard({
+  attempts,
+  page,
+  setPage,
+}: {
+  attempts: Stats["attempts"];
+  page: number;
+  setPage: (n: number) => void;
+}) {
+  const sorted = useMemo(
+    () =>
+      [...attempts].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      ),
+    [attempts],
+  );
+  const totalPages = Math.max(1, Math.ceil(sorted.length / ATTEMPTS_PAGE_SIZE));
+  const safePage = Math.min(Math.max(0, page), totalPages - 1);
+  const start = safePage * ATTEMPTS_PAGE_SIZE;
+  const slice = sorted.slice(start, start + ATTEMPTS_PAGE_SIZE);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex size-8 items-center justify-center rounded-lg bg-muted text-muted-foreground ring-1 ring-inset ring-border">
+            <History className="size-4" />
+          </span>
+          <div>
+            <CardTitle>Recent attempts</CardTitle>
+            <CardDescription>
+              {sorted.length === 0
+                ? "No quizzes yet."
+                : `${sorted.length} quiz${
+                    sorted.length === 1 ? "" : "zes"
+                  } recorded — click any row to see every answer.`}
+            </CardDescription>
           </div>
-        </CardHeader>
-        <CardContent>
-          {attempts.length === 0 ? (
-            <EmptyState
-              icon={History}
-              title="No attempts yet"
-              body="Start your first quiz to see it listed here."
-            />
-          ) : (
+        </div>
+      </CardHeader>
+      <CardContent>
+        {sorted.length === 0 ? (
+          <EmptyState
+            icon={History}
+            title="No attempts yet"
+            body="Start your first quiz to see it listed here."
+          />
+        ) : (
+          <>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Mode</TableHead>
                   <TableHead className="text-right">Score</TableHead>
+                  <TableHead className="w-[40px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {[...attempts]
-                  .sort(
-                    (a, b) =>
-                      new Date(b.createdAt).getTime() -
-                      new Date(a.createdAt).getTime(),
-                  )
-                  .map((a) => {
-                    const pct = Math.round((a.correct / a.total) * 100);
-                    const meta = MODE_META[a.mode];
-                    const Icon = meta?.icon ?? Flame;
-                    return (
-                      <TableRow key={a.id}>
-                        <TableCell className="text-muted-foreground">
+                {slice.map((a) => {
+                  const pct = Math.round((a.correct / a.total) * 100);
+                  const meta = MODE_META[a.mode];
+                  const Icon = meta?.icon ?? Flame;
+                  return (
+                    <TableRow
+                      key={a.id}
+                      className="cursor-pointer transition-colors hover:bg-muted/40"
+                      onClick={() => {
+                        window.location.href = `/progress/attempts/${a.id}`;
+                      }}
+                    >
+                      <TableCell className="text-muted-foreground">
+                        <Link
+                          href={`/progress/attempts/${a.id}`}
+                          className="hover:text-foreground"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {new Date(a.createdAt).toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          <span className="inline-flex items-center gap-1.5">
-                            <Icon className="size-3.5 text-muted-foreground" />
-                            <span className="capitalize">
-                              {meta?.label ?? a.mode}
-                            </span>
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <span className="inline-flex items-center gap-1.5">
+                          <Icon className="size-3.5 text-muted-foreground" />
+                          <span className="capitalize">
+                            {meta?.label ?? a.mode}
                           </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <AccuracyPill
-                            pct={pct}
-                            label={`${a.correct} / ${a.total} (${pct}%)`}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <AccuracyPill
+                          pct={pct}
+                          label={`${a.correct} / ${a.total} (${pct}%)`}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        <ChevronRight className="ml-auto size-4 opacity-60" />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+            {totalPages > 1 && (
+              <div className="mt-4 flex items-center justify-between gap-2 border-t pt-3 text-sm">
+                <span className="text-muted-foreground tabular-nums">
+                  Showing {start + 1}–
+                  {Math.min(start + ATTEMPTS_PAGE_SIZE, sorted.length)} of{" "}
+                  {sorted.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={safePage === 0}
+                    onClick={() => setPage(safePage - 1)}
+                  >
+                    <ChevronLeft className="size-4" />
+                    <span className="hidden sm:inline">Prev</span>
+                  </Button>
+                  <span className="px-2 text-xs text-muted-foreground tabular-nums">
+                    Page {safePage + 1} / {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={safePage >= totalPages - 1}
+                    onClick={() => setPage(safePage + 1)}
+                  >
+                    <span className="hidden sm:inline">Next</span>
+                    <ChevronRight className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

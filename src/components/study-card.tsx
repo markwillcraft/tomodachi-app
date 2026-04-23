@@ -99,10 +99,10 @@ export function StudyCardDeck({
       if (e.key === "ArrowLeft") prev();
       if (e.key === " " || e.key === "Enter") {
         e.preventDefault();
-        setFlipped((f) => !f);
+        flip();
       }
       if (e.key === "p" || e.key === "P") {
-        if (current) speak(current.hiragana);
+        if (current) speak(current.hiragana, current.id);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -115,8 +115,24 @@ export function StudyCardDeck({
     setEditing(false);
   }, [index]);
 
-  function speak(text: string) {
+  // Auto-mark the visible card as Started after a short dwell. Mirrors
+  // the kanji deck's behavior so simply browsing the stack registers
+  // progress even without flipping or audio playback. The dedup logic
+  // in `logView` keeps this from spamming the API for fast scrolls.
+  useEffect(() => {
+    if (!current) return;
+    const t = window.setTimeout(() => void logView(current.id), 1200);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id]);
+
+  function speak(text: string, wordId?: number) {
     speakJapanese(text);
+    // Listening to a card counts as "viewing" it for the purpose of
+    // marking the word as Started in the N5 mastery modal. We fire
+    // and forget; the dedup logic in `logView` keeps repeat audio
+    // taps from spamming the API.
+    if (typeof wordId === "number") void logView(wordId);
   }
 
   async function logView(wordId: number) {
@@ -459,8 +475,7 @@ export function StudyCardDeck({
               aria-label="Play pronunciation"
               onClick={(e) => {
                 e.stopPropagation();
-                speak(current.hiragana);
-                void logView(current.id);
+                speak(current.hiragana, current.id);
               }}
               className="size-10 p-0"
             >
@@ -517,7 +532,7 @@ export function StudyCardDeck({
           <ChevronLeft />
           Prev
         </Button>
-        <Button variant="ghost" onClick={() => setFlipped((f) => !f)}>
+        <Button variant="ghost" onClick={flip}>
           <Repeat />
           Flip
         </Button>

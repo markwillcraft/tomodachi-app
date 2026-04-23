@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth-utils";
 import { awardForQuiz } from "@/lib/coins";
-import { itemFromResult, recordReview } from "@/lib/srs";
+import { itemFromResult, recordReview, type ReviewOutcome } from "@/lib/srs";
 import { evaluateAchievements } from "@/lib/achievements";
 
 export const runtime = "nodejs";
@@ -96,8 +96,13 @@ export async function POST(req: Request) {
   // the same upsert when the same item was asked twice in one quiz.
   // Failures here shouldn't block the response — the worst case is a
   // slightly stale schedule, which self-heals on the next answer.
+  // We also collect the post-update outcome per question so the client
+  // results screen can show "level 2 → 3, mastered" badges (kana
+  // results page especially).
+  const srsOutcomes: Array<ReviewOutcome & { questionIdx: number }> = [];
   try {
-    for (const r of results) {
+    for (let i = 0; i < results.length; i += 1) {
+      const r = results[i];
       const item = itemFromResult(
         r.kind,
         r.prompt,
@@ -107,7 +112,17 @@ export async function POST(req: Request) {
           : null,
       );
       if (!item) continue;
-      await recordReview(userId, item.type, item.key, r.isCorrect);
+      try {
+        const outcome = await recordReview(
+          userId,
+          item.type,
+          item.key,
+          r.isCorrect,
+        );
+        srsOutcomes.push({ ...outcome, questionIdx: i });
+      } catch {
+        // Skip this row but keep the rest going.
+      }
     }
   } catch {
     // Swallow; SRS is best-effort for this response.
@@ -118,5 +133,22 @@ export async function POST(req: Request) {
   // celebrate them on the results screen.
   const newlyUnlocked = await evaluateAchievements(userId);
 
-  return NextResponse.json({ attemptId: attempt.id, coins, newlyUnlocked });
+  return NextResponse.json({
+    attemptId: attempt.id,
+    coins,
+    newlyUnlocked,
+    srs: srsOutcomes.map((o) => ({
+      questionIdx: o.questionIdx,
+      itemType: o.itemType,
+      itemKey: o.itemKey,
+      prevLevel: o.prevLevel,
+      level: o.level,
+      isNew: o.isNew,
+      leveledUp: o.leveledUp,
+      reset: o.reset,
+      mastered: o.mastered,
+      totalCorrect: o.totalCorrect,
+      totalSeen: o.totalSeen,
+    })),
+  });
 }
