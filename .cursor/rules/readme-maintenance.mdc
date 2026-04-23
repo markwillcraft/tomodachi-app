@@ -1,0 +1,73 @@
+---
+description: Keep README.md in sync with every feature/behaviour/schema change
+alwaysApply: true
+---
+
+# README maintenance
+
+`README.md` is the canonical reference for **what the app does and how it does
+it**. The intro line says it explicitly: *"If you change behavior in code,
+update the matching section here."* Every change that affects user-visible
+behaviour, the data model, the API surface, or operational defaults MUST be
+reflected in the matching README section in the **same change** — not in a
+follow-up.
+
+## When to update
+
+Update `README.md` whenever you:
+
+- Add a new feature, page, or route → new `### Subsection` under `## Feature reference`
+- Change behaviour of an existing feature → edit its existing subsection
+- Add / rename / remove a Prisma model or migrate the schema → `## Data model`
+- Add / change / remove an API route → `## API surface`
+- Touch a hot path or change a perf default (cache, query, batching) → `## Performance notes`
+- Add / change a project-wide convention → `## Conventions`
+- Add a new env var or external account requirement → `## Local setup` AND `.env.example`
+- Swap or upgrade a major dependency / stack choice → `## Stack`
+
+## Section map (which file → which README section)
+
+| You touched... | Update section |
+|---|---|
+| New `src/app/<feature>/**` route or page | `## Feature reference` — add `### <Feature>` and link from TOC |
+| Existing `src/app/<feature>/**` | matching `### <Feature>` subsection |
+| `prisma/schema.prisma` or `prisma/migrations/**` | `## Data model` |
+| `src/app/api/**/route.ts` | `## API surface` |
+| `src/lib/srs.ts`, `streak*.ts`, `coins.ts`, `time.ts`, `achievements.ts`, `n5-paths.ts`, `quiz.ts`, `shop.ts` | matching feature subsection — these are listed in the source-of-truth table at the bottom of the README |
+| New `src/lib/<thing>.ts` that becomes a source of truth | bottom-of-README source-of-truth table + relevant feature subsection |
+| New Cursor rule in `.cursor/rules/**` | `## Conventions` (one-liner naming the rule + what it enforces) |
+
+## Subsection style (under `## Feature reference`)
+
+Each `### Feature` subsection follows the same pattern — match it:
+
+1. **One-paragraph summary** — what the feature does, in user terms
+2. **Bullet list of mechanics** — each bullet ends with the source file in
+   backticks (e.g. `src/lib/srs.ts`)
+3. **Routes** — name the URL(s) it lives at if it has UI
+4. **Cross-links** — if it grants/spends coins, modifies streak, or unlocks
+   achievements, link those subsections
+
+## Process
+
+When implementing a change:
+
+1. Make the code change.
+2. Update `README.md` in the **same** turn / commit.
+3. If you added a new feature, also add the anchor link to the
+   `## Table of contents` at the top.
+4. If you added a new env var, also update `.env.example`.
+5. If you added a new source-of-truth file under `src/lib/**`, append it to
+   the table at the very bottom of the README.
+
+## Done-ness checklist
+
+Before considering work complete, verify:
+
+- [ ] Behaviour change → matching feature subsection edited
+- [ ] New feature → new subsection added AND linked from TOC
+- [ ] Schema change → `## Data model` updated
+- [ ] New/changed API route → `## API surface` updated
+- [ ] New env var → `## Local setup` updated AND `.env.example` updated
+- [ ] New convention or rule → `## Conventions` updated
+- [ ] New source-of-truth file → bottom-of-README table updated

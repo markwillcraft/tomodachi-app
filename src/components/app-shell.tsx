@@ -5,18 +5,24 @@ import Image from "next/image"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
+  BookMarked,
   BookOpen,
+  Brush,
   Coins,
   GraduationCap,
+  Keyboard,
   Languages,
   Layers,
   LayoutDashboard,
+  Library,
   Menu,
+  Package,
   PanelLeftClose,
   PanelLeftOpen,
   ScrollText,
   Settings,
   Shield,
+  ShoppingBag,
   Sparkles,
   Trophy,
   TrendingUp,
@@ -62,8 +68,10 @@ type NavGroup = {
 // ---------- nav config ----------
 //
 // Track first (where the user lands and reflects), Learn second (the daily
-// loop with sub-routes). N5 Categories nests under Study because they share
-// the "browse vocabulary" mental model.
+// loop with sub-routes). Study exposes every study surface as a quick-jump
+// child so the user can hop straight into kana / vocab / grammar / kanji /
+// muscle memory without going through the hub. "Browse Categories" sits
+// first because it's the gateway for populating the vocab library.
 
 const NAV_GROUPS: NavGroup[] = [
   {
@@ -84,7 +92,16 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Study",
         icon: BookOpen,
         children: [
-          { href: "/categories", label: "N5 Categories", icon: Layers },
+          { href: "/categories", label: "Browse Categories", icon: Layers },
+          { href: "/study/kana", label: "Kana Table", icon: Languages },
+          { href: "/study/vocab", label: "Vocab Cards", icon: Library },
+          { href: "/study/grammar", label: "N5 Grammar", icon: BookMarked },
+          { href: "/study/kanji", label: "N5 Kanji", icon: Brush },
+          {
+            href: "/study/muscle-memory",
+            label: "Muscle Memory",
+            icon: Keyboard,
+          },
         ],
       },
       {
@@ -100,6 +117,17 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    // Cosmetics economy: Store is where the user spends coins,
+    // Inventory is where their unlocks live. Sits between Learn and
+    // Account so the natural flow is "study → earn → spend → flex".
+    id: "shop",
+    label: "Shop",
+    items: [
+      { href: "/shop", label: "Store", icon: ShoppingBag },
+      { href: "/inventory", label: "Inventory", icon: Package },
+    ],
+  },
+  {
     id: "account",
     label: "Account",
     items: [{ href: "/settings", label: "Settings", icon: Settings }],
@@ -107,6 +135,17 @@ const NAV_GROUPS: NavGroup[] = [
 ]
 
 const COLLAPSED_KEY = "tomodachi_sidebar_collapsed"
+
+// Routes that opt into the wider main-canvas (max-w-7xl). Visual
+// surfaces with a lot of horizontal layout (shop shelf, equipped
+// preview grid) need the extra room; everything else reads better at
+// the narrower default width.
+const WIDE_ROUTE_PREFIXES = ["/shop", "/inventory"]
+function isWideRoute(pathname: string): boolean {
+  return WIDE_ROUTE_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(p + "/"),
+  )
+}
 
 // ---------- shell ----------
 
@@ -275,6 +314,7 @@ export function AppShell({
           streak={streak}
           coins={coins}
           onClose={() => setDrawerOpen(false)}
+          hideSummaryPanels
         />
       </aside>
 
@@ -291,7 +331,20 @@ export function AppShell({
           onOpenDrawer={() => setDrawerOpen(true)}
         />
         <main>
-          <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:py-10">
+          <div
+            className={cn(
+              "mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:py-10",
+              // Cosmetics surfaces (Store, Inventory) get the full
+              // available canvas (capped at the screen-2xl breakpoint
+              // so it doesn't run away on ultra-wide displays). The
+              // shop shelf benefits from every pixel — more visible
+              // cards per row = less scrolling. Everything else stays
+              // at the reading-friendly 5xl width.
+              isWideRoute(pathname)
+                ? "max-w-screen-2xl"
+                : "max-w-5xl",
+            )}
+          >
             {children}
           </div>
         </main>
@@ -365,7 +418,10 @@ function TopBar({
 function CoinChip({ coins }: { coins: SidebarCoins }) {
   return (
     <Link
-      href="/dashboard"
+      // Coins lead to the Store: it's the natural "what can I spend
+      // this on?" destination and teases the shop whenever the user
+      // glances at their balance.
+      href="/shop"
       aria-label={`${coins.balance} coins · +${coins.earnedToday} today`}
       title={`${coins.balance} coins · +${coins.earnedToday} earned today`}
       className={cn(
@@ -425,12 +481,19 @@ function SidebarContents({
   streak,
   coins,
   onClose,
+  // When true, the streak + coin panels at the bottom of the sidebar
+  // are suppressed. The mobile drawer opts in to this: the topbar
+  // already surfaces the coin balance on mobile and the dashboard
+  // itself shows the full streak widget, so duplicating them inside
+  // the nav drawer just crowds the screen.
+  hideSummaryPanels = false,
 }: {
   pathname: string
   collapsed: boolean
   streak: SidebarStreak | null
   coins: SidebarCoins | null
   onClose?: () => void
+  hideSummaryPanels?: boolean
 }) {
   return (
     <div className="flex h-full flex-col">
@@ -455,15 +518,17 @@ function SidebarContents({
         </nav>
       </div>
 
-      <div
-        className={cn(
-          "shrink-0 space-y-3 border-t pt-3",
-          collapsed ? "px-2 pb-3" : "px-3 pb-3",
-        )}
-      >
-        <TodayPanel streak={streak} collapsed={collapsed} />
-        <SidebarCoinsPanel coins={coins} collapsed={collapsed} />
-      </div>
+      {!hideSummaryPanels && (
+        <div
+          className={cn(
+            "shrink-0 space-y-3 border-t pt-3",
+            collapsed ? "px-2 pb-3" : "px-3 pb-3",
+          )}
+        >
+          <TodayPanel streak={streak} collapsed={collapsed} />
+          <SidebarCoinsPanel coins={coins} collapsed={collapsed} />
+        </div>
+      )}
     </div>
   )
 }
@@ -485,7 +550,7 @@ function SidebarCoinsPanel({
           label={`${coins.balance.toLocaleString()} coins · +${coins.earnedToday} today`}
         >
           <Link
-            href="/dashboard"
+            href="/shop"
             className="relative flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 ring-1 ring-inset ring-amber-500/30 transition-colors hover:bg-amber-500/20 dark:text-amber-300"
           >
             <Coins className="size-4" strokeWidth={2.25} />
@@ -501,7 +566,7 @@ function SidebarCoinsPanel({
   }
   return (
     <Link
-      href="/dashboard"
+      href="/shop"
       className="block rounded-xl border bg-gradient-to-br from-amber-500/10 via-card to-card p-3 transition-colors hover:from-amber-500/15"
     >
       <div className="flex items-center gap-3">

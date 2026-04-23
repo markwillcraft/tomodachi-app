@@ -495,7 +495,8 @@ export default function ProgressPage() {
                         <TableCell className="text-right">
                           <AccuracyPill
                             pct={acc}
-                            label={`${acc}% (${w.correct}/${w.total})`}
+                            correct={w.correct}
+                            total={w.total}
                           />
                         </TableCell>
                       </TableRow>
@@ -677,7 +678,8 @@ export default function ProgressPage() {
                         <TableCell className="text-right">
                           <AccuracyPill
                             pct={acc}
-                            label={`${acc}% (${k.correct}/${k.total})`}
+                            correct={k.correct}
+                            total={k.total}
                           />
                         </TableCell>
                       </TableRow>
@@ -902,7 +904,9 @@ function RecentAttemptsCard({
                       <TableCell className="text-right">
                         <AccuracyPill
                           pct={pct}
-                          label={`${a.correct} / ${a.total} (${pct}%)`}
+                          correct={a.correct}
+                          total={a.total}
+                          layout="fraction-first"
                         />
                       </TableCell>
                       <TableCell className="text-right text-muted-foreground">
@@ -1198,21 +1202,57 @@ function MasteryTile({
   );
 }
 
-function AccuracyPill({ pct, label }: { pct: number; label: string }) {
+function AccuracyPill({
+  pct,
+  correct,
+  total,
+  // "pct-first" (default) renders "72% · 18/25" — percent is primary,
+  // fraction secondary. "fraction-first" swaps them for surfaces that
+  // emphasize raw counts (e.g. the Recent attempts list). In both
+  // layouts we force `whitespace-nowrap` so narrow table columns can
+  // never wrap the pill into an awkward two-line oval.
+  layout = "pct-first",
+}: {
+  pct: number;
+  correct: number;
+  total: number;
+  layout?: "pct-first" | "fraction-first";
+}) {
   const tone =
     pct >= 70
       ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
       : pct >= 40
         ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
         : "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30";
+  const pctStr = `${pct}%`;
+  const fractionStr = `${correct}/${total}`;
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium tabular-nums",
+        "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold tabular-nums leading-none",
         tone,
       )}
+      title={`${pctStr} accuracy (${fractionStr})`}
     >
-      {label}
+      {layout === "pct-first" ? (
+        <>
+          <span>{pctStr}</span>
+          <span aria-hidden className="opacity-40">
+            ·
+          </span>
+          <span className="text-[10px] font-medium opacity-70">
+            {fractionStr}
+          </span>
+        </>
+      ) : (
+        <>
+          <span>{fractionStr}</span>
+          <span aria-hidden className="opacity-40">
+            ·
+          </span>
+          <span className="text-[10px] font-medium opacity-70">{pctStr}</span>
+        </>
+      )}
     </span>
   );
 }

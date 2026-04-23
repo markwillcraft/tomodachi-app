@@ -32,6 +32,7 @@ does it. If you change behavior in code, update the matching section here.
    - [Quick Actions](#quick-actions)
    - [Progress page](#progress-page)
    - [Settings & timezone](#settings--timezone)
+   - [Shop & Inventory](#shop--inventory)
 5. [Data model](#data-model)
 6. [API surface](#api-surface)
 7. [Performance notes](#performance-notes)
@@ -408,6 +409,83 @@ due, hinting at the dedicated **Spaced review** section right below.
   bucket by **local** day.
 - **Auto-freeze streak** — toggle the Streak Freeze auto-spend behavior.
 
+### Shop & Inventory
+
+The cosmetics economy. Coins are earned through study (quizzes, vocab cards,
+kanji study, kana drills, daily quests) and **spent** in the Store on cosmetics
+that decorate the dashboard mascot, the home scene, and shareable progress
+screens. The intended loop is *study → earn → flex*: progression is visible,
+worth showing off, and rewarding to chase.
+
+#### Phase 1 — what ships now
+
+- **`/shop`** — Server-rendered balance header (`getCoinSummary`) + a client
+  `ShopBrowser` with a category tab strip and a responsive item grid. Every
+  card shows the rarity ribbon, glyph placeholder, name (with optional
+  Japanese name), description, price chip, and a disabled **Coming soon**
+  CTA. The coin chip in the topbar (and the sidebar coin panels) deep-link
+  here.
+- **`/inventory`** — "Your closet" page with an 8-slot equipped-preview grid
+  (Head / Top / Bottom / Feet / Pet / Background / House / Accessory — all
+  Empty) and per-category empty states that point back to the Store. The
+  slot grid is the visual teaser for the Phase 2 dashboard mascot.
+- **Sidebar** — a new **Shop** group sits between Learn and Account with
+  Store + Inventory siblings.
+- **No Prisma changes.** Every catalog item is `status: "coming-soon"` so
+  there's nothing to persist yet.
+
+Catalog lives in [`src/lib/shop.ts`](src/lib/shop.ts) — typed `const` arrays,
+no DB dependency. Helpers: `getShopCategory(id)`, `getItemsByCategory(id)`.
+
+#### Categories (8)
+
+| Category | Slot | Tone | Example items |
+|---|---|---|---|
+| Headwear | head | amber | Fox mask, Samurai kabuto, Oni mask |
+| Tops | top | rose | Yukata top, Kimono jacket, Ninja gi |
+| Bottoms | bottom | violet | Hakama, Samurai greaves |
+| Shoes | feet | sky | Geta sandals, Tabi boots, Dragon boots |
+| Pets | pet | emerald | Maneki-neko, Tanuki, Baby dragon |
+| Backgrounds | background | violet | Sakura grove, Torii gate, Mt. Fuji |
+| House | house | amber | Tatami room, Zen garden, Shrine altar |
+| Accessories | accessory | slate | Round glasses, Scholar badge, Sensei pipe |
+
+#### Rarity → price ladder
+
+| Rarity | Coin price | Visual cue |
+|---|---|---|
+| Common | 50 | Muted chip + soft border |
+| Rare | 250 | Sky chip + cyan ring on hover |
+| Epic | 1,000 | Violet chip + violet glow |
+| Legendary | 3,000 | Amber chip + warm glow |
+
+Per-rarity styling tokens live in `RARITY_META`; per-tone background gradients
+live in `TONE_META` — both exported from `src/lib/shop.ts` so any future
+surface (item detail dialog, dashboard mascot card) reuses the same language.
+
+#### Phase 2 — when real cosmetics ship (planned)
+
+When art is ready, flipping items from `"coming-soon"` to `"live"` is *not*
+enough on its own. The cutover plan:
+
+- **Prisma additions:**
+  - `UserInventory { userId, itemId, acquiredAt, @@unique([userId, itemId]) }`
+  - `EquippedCosmetic { userId, slot, itemId, @@unique([userId, slot]) }`
+- **`spendCoins(userId, { amount, dedupKey: "shop:<purchaseId>", reason })`**
+  in [`src/lib/coins.ts`](src/lib/coins.ts) — writes a negative-amount row
+  to `CoinLedger` guarded by a balance check. The ledger already tolerates
+  negatives; `awardCoins` early-returns on `amount <= 0` so the spend path
+  is cleanly separate.
+- **`POST /api/shop/buy`** — verify balance → insert `UserInventory` →
+  `spendCoins` → return updated balance + the unlocked item.
+- **Dashboard integration** — replace the `<Image src="/Dachi-mascot.png" />`
+  block in [`src/app/dashboard/page.tsx`](src/app/dashboard/page.tsx) with
+  a `<MascotCanvas equipped={…} />` client component that layers
+  head/top/bottom/feet images over the base mascot, and renders the
+  background + house behind it.
+- **Inventory** — swap empty-state tiles for owned-item cards with an
+  "Equip" toggle that hits `POST /api/shop/equip`.
+
 ---
 
 ## Data model
@@ -507,6 +585,10 @@ A few patterns the codebase leans on, kept here so refactors don't undo them:
   on this file.
 - **API handlers funnel through `requireUserId()`.** No raw `auth()` outside
   the helper.
+- **README stays in sync with code.** Every behaviour, schema, API, env, or
+  feature change must update the matching section here in the same change.
+  Enforced by `.cursor/rules/readme-maintenance.mdc` (always-applied agent
+  rule with section map + checklist).
 
 ---
 
