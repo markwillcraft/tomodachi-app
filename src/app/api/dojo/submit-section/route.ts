@@ -4,6 +4,8 @@ import { requireUserId } from "@/lib/auth-utils"
 import { awardForQuiz, awardForDojoMilestones } from "@/lib/coins"
 import { evaluateAchievements } from "@/lib/achievements"
 import {
+  DojoPrereqUnmetError,
+  isPathPrereqMet,
   isSectionDrillable,
   submitDojoSection,
 } from "@/lib/dojo-server"
@@ -12,7 +14,7 @@ import {
   getLessonContent,
   type DrillQuestion,
 } from "@/lib/dojo-content"
-import type { DojoSectionKind } from "@/lib/dojo"
+import { findPathForLesson, type DojoSectionKind } from "@/lib/dojo"
 
 export const runtime = "nodejs"
 
@@ -68,6 +70,22 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: "Section is not drillable yet (coming soon)" },
       { status: 400 },
+    )
+  }
+
+  // Up-front prerequisite check. `submitDojoSection` enforces this
+  // too (it's the canonical guard), but doing it before we write the
+  // QuizAttempt prevents orphan rows when a hand-crafted POST hits
+  // a locked path.
+  const path = findPathForLesson(lessonId)
+  if (path?.prerequisite && !(await isPathPrereqMet(userId, path))) {
+    return NextResponse.json(
+      {
+        error: "Prerequisite not met for this lesson's path.",
+        code: "DOJO_PREREQ_UNMET",
+        path: { level: path.level, label: path.label },
+      },
+      { status: 403 },
     )
   }
 
@@ -152,13 +170,33 @@ export async function POST(req: Request) {
   // Update DojoProgress (best score / passedAt). This is what flips
   // the lesson card from "in progress" to "passed" and unlocks the
   // lesson-complete modal once all three sections are green.
-  const sectionResult = await submitDojoSection({
-    userId,
-    lessonId,
-    section,
-    correct,
-    total,
-  })
+  //
+  // `submitDojoSection` is the single gate for path prerequisites
+  // (e.g. N4 requires full N5 completion). When that gate trips we
+  // surface a 403 with a stable error code so the client can render
+  // a "finish N5 first" message instead of a generic failure toast.
+  let sectionResult: Awaited<ReturnType<typeof submitDojoSection>>
+  try {
+    sectionResult = await submitDojoSection({
+      userId,
+      lessonId,
+      section,
+      correct,
+      total,
+    })
+  } catch (err) {
+    if (err instanceof DojoPrereqUnmetError) {
+      return NextResponse.json(
+        {
+          error: "Prerequisite not met for this lesson's path.",
+          code: err.code,
+          path: { level: err.path.level, label: err.path.label },
+        },
+        { status: 403 },
+      )
+    }
+    throw err
+  }
 
   // Award coins. Two streams:
   //   1. The standard quiz coins (base + per-correct + accuracy bonus

@@ -24,6 +24,7 @@ import {
 import {
   DOJO_PASS_THRESHOLD,
   getDojoLessonProgress,
+  isPathPrereqMet,
   type DojoSectionProgress,
 } from "@/lib/dojo-server"
 
@@ -72,6 +73,16 @@ export default async function DojoLessonPage({
       : null
   const pathLocked = path.status === "locked"
   const lessonLocked = lesson.status === "locked"
+  // Runtime prerequisite — the path may be `available` structurally
+  // yet still gated for this user (e.g. N4 before N5 completion).
+  // When unmet, we render the lesson page in *preview* mode: header
+  // and section cards are visible but section drills won't link.
+  const prereqMet = await isPathPrereqMet(userId, path)
+  const prereqLocked = !prereqMet
+  // The lesson itself is "locked-for-drilling" if any of these gates
+  // tripped. We still render the page (preview), just without the
+  // active CTAs.
+  const sectionDrillsLocked = pathLocked || lessonLocked || prereqLocked
 
   const progress = await getDojoLessonProgress(userId, lessonId)
 
@@ -82,9 +93,23 @@ export default async function DojoLessonPage({
         lesson={lesson}
         pathLabel={path.label}
         pathTextbook={path.textbook}
-        locked={pathLocked || lessonLocked}
+        locked={sectionDrillsLocked}
         passedSections={progress.passedSections}
       />
+
+      {prereqLocked && path.prerequisite?.kind === "level-complete" && (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-800 dark:text-amber-200"
+        >
+          <Lock className="mt-0.5 size-3.5 shrink-0" strokeWidth={2.5} />
+          <p className="leading-snug">
+            <span className="font-semibold">Preview mode.</span> Finish every{" "}
+            {path.prerequisite.level.toUpperCase()} lesson to unlock the
+            drills here. You can still read the section overviews below.
+          </p>
+        </div>
+      )}
 
       <section className="space-y-2">
         <header className="flex items-baseline justify-between gap-x-3 px-1">
@@ -102,7 +127,7 @@ export default async function DojoLessonPage({
               section={sec}
               level={lesson.level}
               lessonId={lesson.id}
-              locked={pathLocked || lessonLocked}
+              locked={sectionDrillsLocked}
               progress={progress.sections[sec.kind]}
             />
           ))}

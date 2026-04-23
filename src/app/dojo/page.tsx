@@ -3,8 +3,11 @@ import { redirect } from "next/navigation"
 import { ArrowRight, Compass, Sparkles } from "lucide-react"
 import { auth } from "@clerk/nextjs/server"
 import { cn } from "@/lib/utils"
-import { DOJO_PATHS, getPathTotals } from "@/lib/dojo"
-import { getDojoProgressByLesson } from "@/lib/dojo-server"
+import { DOJO_PATHS, getPathTotals, type DojoLevel } from "@/lib/dojo"
+import {
+  getDojoProgressByLesson,
+  getPrereqMetByLevel,
+} from "@/lib/dojo-server"
 import { DojoBrowser, type LessonProgressLite } from "./dojo-browser"
 
 // =====================================================================
@@ -40,9 +43,6 @@ export default async function DojoPage() {
     { lessons: 0, grammar: 0, vocab: 0, listening: 0 },
   )
 
-  const availablePaths = DOJO_PATHS.filter((p) => p.status === "available")
-  const lockedPaths = DOJO_PATHS.length - availablePaths.length
-
   // Per-lesson progress so cards on the index can render checks /
   // partial-progress dots without each one round-tripping the DB.
   // The server reduces DojoProgress rows into a small lookup keyed
@@ -58,6 +58,17 @@ export default async function DojoPage() {
     if (p.completed) completedLessons++
   }
 
+  // Per-path prerequisite check. A path can be `status: "available"`
+  // structurally yet still gated for *this* user (e.g. N4 needs N5
+  // complete). We split the badge counter into "open right now" vs.
+  // "available but locked behind a prerequisite" so the sensei header
+  // stays honest about what the learner can actually drill today.
+  const prereqMetByLevel = await getPrereqMetByLevel(userId)
+  const openPaths = DOJO_PATHS.filter(
+    (p) => p.status === "available" && prereqMetByLevel[p.level],
+  )
+  const lockedPaths = DOJO_PATHS.length - openPaths.length
+
   return (
     // Same vertical rhythm as /shop and /inventory so all three
     // wide-canvas surfaces breathe identically.
@@ -68,7 +79,7 @@ export default async function DojoPage() {
         grammar={totals.grammar}
         vocab={totals.vocab}
         listening={totals.listening}
-        availablePaths={availablePaths.length}
+        availablePaths={openPaths.length}
         lockedPaths={lockedPaths}
       />
 
@@ -76,8 +87,12 @@ export default async function DojoPage() {
           SECTION_META / PATH_BADGE_META aren't serialisable across
           the server → client boundary, so we don't pass it as a
           prop. (Same pattern as ShopBrowser.) Per-lesson progress
-          IS plain data so we thread that through. */}
-      <DojoBrowser progressByLesson={lessonProgress} />
+          and the prereq map ARE plain data so we thread them
+          through. */}
+      <DojoBrowser
+        progressByLesson={lessonProgress}
+        prereqMetByLevel={prereqMetByLevel as Record<DojoLevel, boolean>}
+      />
     </div>
   )
 }

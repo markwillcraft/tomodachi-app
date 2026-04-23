@@ -16,7 +16,14 @@
 import "server-only"
 
 import { prisma } from "@/lib/prisma"
-import { findLesson, type DojoSectionKind } from "@/lib/dojo"
+import {
+  DOJO_PATHS,
+  findLesson,
+  findPathForLesson,
+  type DojoLevel,
+  type DojoPath,
+  type DojoSectionKind,
+} from "@/lib/dojo"
 import { getLessonContent } from "@/lib/dojo-content"
 
 /** Score (out of 100) the user must hit on a single attempt for the
@@ -42,6 +49,20 @@ export type DojoLessonProgress = {
 }
 
 const ALL_SECTIONS: readonly DojoSectionKind[] = ["grammar", "vocab", "listening"]
+
+/** Thrown by `submitDojoSection` when the lesson's path has a
+ *  `prerequisite` the user hasn't satisfied yet. The API route
+ *  catches this specifically and maps it to a 403 so the client can
+ *  surface a "finish N5 first" toast instead of a generic 500. */
+export class DojoPrereqUnmetError extends Error {
+  readonly code = "DOJO_PREREQ_UNMET"
+  readonly path: DojoPath
+  constructor(message: string, path: DojoPath) {
+    super(message)
+    this.name = "DojoPrereqUnmetError"
+    this.path = path
+  }
+}
 
 // ---------------------------------------------------------------------
 // Reads
@@ -142,6 +163,82 @@ export async function getDojoSectionsByKind(
   return out
 }
 
+// ---------------------------------------------------------------------
+// Prerequisite gates
+// ---------------------------------------------------------------------
+
+/** True when the user has satisfied the path's `prerequisite`. Paths
+ *  with no prerequisite are always met (so this returns true). The
+ *  current rule set has only one prerequisite kind: `level-complete`,
+ *  which requires every lesson in the named level to be fully
+ *  completed (all three sections passed).
+ *
+ *  Performance note: a single query fetches every passed-section row
+ *  for the user, so calling this once per path on a page render is
+ *  cheap (one round-trip total when the helper batches across paths).
+ *  For the per-path call site we keep it as a simple helper. */
+export async function isPathPrereqMet(
+  userId: string,
+  path: DojoPath,
+): Promise<boolean> {
+  if (!path.prerequisite) return true
+  if (path.prerequisite.kind === "level-complete") {
+    return isLevelComplete(userId, path.prerequisite.level)
+  }
+  return true
+}
+
+/** Returns true iff every lesson in the named level has all three
+ *  sections passed. Pulled out of `isPathPrereqMet` so the same logic
+ *  can power batch calls (e.g. an "unlocked levels" map for the dojo
+ *  page) without re-walking the path tree. */
+export async function isLevelComplete(
+  userId: string,
+  level: DojoLevel,
+): Promise<boolean> {
+  const path = DOJO_PATHS.find((p) => p.level === level)
+  if (!path || path.lessons.length === 0) return false
+
+  const lessonIds = path.lessons.map((l) => l.id)
+  const rows = await prisma.dojoProgress.findMany({
+    where: {
+      userId,
+      lessonId: { in: lessonIds },
+      passedAt: { not: null },
+    },
+    select: { lessonId: true, section: true },
+  })
+
+  // Bucket passed rows per lesson; the level is "complete" only when
+  // every lesson has all three sections in the bucket.
+  const passedSectionsByLesson = new Map<string, Set<string>>()
+  for (const row of rows) {
+    if (!passedSectionsByLesson.has(row.lessonId)) {
+      passedSectionsByLesson.set(row.lessonId, new Set())
+    }
+    passedSectionsByLesson.get(row.lessonId)!.add(row.section)
+  }
+  for (const id of lessonIds) {
+    const passed = passedSectionsByLesson.get(id)
+    if (!passed) return false
+    if (!ALL_SECTIONS.every((s) => passed.has(s))) return false
+  }
+  return true
+}
+
+/** Convenience: build a map of `{ [level]: prereqMet }` for every
+ *  path in the catalog. Cheaper than calling `isPathPrereqMet` once
+ *  per path because it short-circuits when no prereq exists. */
+export async function getPrereqMetByLevel(
+  userId: string,
+): Promise<Record<DojoLevel, boolean>> {
+  const out = {} as Record<DojoLevel, boolean>
+  for (const path of DOJO_PATHS) {
+    out[path.level] = await isPathPrereqMet(userId, path)
+  }
+  return out
+}
+
 /** Total count of fully-completed lessons. Used by achievements and
  *  by the N5 mastery dashboard summary. */
 export async function getCompletedLessonsCount(userId: string): Promise<number> {
@@ -200,6 +297,23 @@ export async function submitDojoSection(
   input: SubmitSectionInput,
 ): Promise<SubmitSectionResult> {
   const { userId, lessonId, section, correct, total } = input
+
+  // Server-side prerequisite guard — the single source of truth for
+  // "is this user allowed to submit drills for this lesson?". The
+  // RSC redirects + UI gating are user-experience layers; this throw
+  // is what prevents a hand-crafted POST from leaking N4 progress
+  // before the user has cleared N5. We keep the message specific so
+  // the API route can surface it cleanly when caught.
+  const path = findPathForLesson(lessonId)
+  if (path && path.prerequisite) {
+    const met = await isPathPrereqMet(userId, path)
+    if (!met) {
+      throw new DojoPrereqUnmetError(
+        `Path "${path.label}" is locked until prerequisite is met.`,
+        path,
+      )
+    }
+  }
 
   // Defensive: clamp + sanity-check inputs so a malformed POST can't
   // poison the row with negative scores or division-by-zero NaN.

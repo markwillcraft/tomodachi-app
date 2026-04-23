@@ -43,18 +43,28 @@ export type LessonProgressLite = {
 
 export function DojoBrowser({
   progressByLesson = {},
+  prereqMetByLevel,
 }: {
   progressByLesson?: Record<string, LessonProgressLite>
+  /** Per-level flag: true when the user has met that path's runtime
+   *  prerequisite (or the path has none). Defaults to "all met" so
+   *  the component still renders sensibly without the prop. */
+  prereqMetByLevel?: Record<DojoLevel, boolean>
 }) {
-  // The first available path is the user's natural starting point.
-  // We default to N5 because N4 is locked in Phase 1, but the
-  // selector still lets them peek at locked paths.
+  const prereqMap: Record<DojoLevel, boolean> =
+    prereqMetByLevel ?? ({ n5: true, n4: true } as Record<DojoLevel, boolean>)
+
+  // The first *fully open* path (available AND prereq met) is the
+  // natural starting point. The selector still lets users peek at
+  // prereq-locked paths in preview mode.
   const initial: DojoLevel =
-    (DOJO_PATHS.find((p) => p.status === "available")?.level as DojoLevel) ??
-    "n5"
+    (DOJO_PATHS.find(
+      (p) => p.status === "available" && prereqMap[p.level],
+    )?.level as DojoLevel) ?? "n5"
   const [activeLevel, setActiveLevel] = useState<DojoLevel>(initial)
 
   const activePath = DOJO_PATHS.find((p) => p.level === activeLevel)
+  const activePrereqMet = activePath ? prereqMap[activePath.level] : true
 
   return (
     <section className="space-y-3">
@@ -63,10 +73,15 @@ export function DojoBrowser({
         activeLevel={activeLevel}
         onSelect={setActiveLevel}
         progressByLesson={progressByLesson}
+        prereqMetByLevel={prereqMap}
       />
 
       {activePath && (
-        <LessonGrid path={activePath} progressByLesson={progressByLesson} />
+        <LessonGrid
+          path={activePath}
+          progressByLesson={progressByLesson}
+          prereqMet={activePrereqMet}
+        />
       )}
     </section>
   )
@@ -81,11 +96,13 @@ function PathSelector({
   activeLevel,
   onSelect,
   progressByLesson,
+  prereqMetByLevel,
 }: {
   paths: readonly DojoPath[]
   activeLevel: DojoLevel
   onSelect: (level: DojoLevel) => void
   progressByLesson: Record<string, LessonProgressLite>
+  prereqMetByLevel: Record<DojoLevel, boolean>
 }) {
   return (
     <div
@@ -115,12 +132,22 @@ function PathSelector({
             (n, l) => n + (progressByLesson[l.id]?.completed ? 1 : 0),
             0,
           )
+          // A path can be in three visible states:
+          //   * structurally locked (status === "locked"): can't even
+          //     activate the tile — content is being built.
+          //   * prereq-locked (available + prereq unmet): activate the
+          //     tile to *preview*; drills won't dispatch.
+          //   * fully open: drills are live.
+          const structurallyLocked = path.status === "locked"
+          const prereqMet = prereqMetByLevel[path.level] ?? true
+          const prereqLocked = !structurallyLocked && !prereqMet
           return (
             <li key={path.level} className="min-w-0 flex-1 sm:flex-initial">
               <PathTile
                 path={path}
                 active={path.level === activeLevel}
-                disabled={path.status === "locked"}
+                disabled={structurallyLocked}
+                prereqLocked={prereqLocked}
                 completedLessons={completed}
                 onSelect={() => onSelect(path.level)}
               />
@@ -136,18 +163,31 @@ function PathTile({
   path,
   active,
   disabled,
+  prereqLocked,
   completedLessons,
   onSelect,
 }: {
   path: DojoPath
   active: boolean
   disabled: boolean
+  /** True when the path's content is built but the user hasn't met
+   *  its runtime prerequisite — e.g. N4 before finishing N5. The
+   *  tile is still clickable (so users can preview) but rendered
+   *  with a Lock chip + a "Finish N5 to unlock" subtitle. */
+  prereqLocked: boolean
   completedLessons: number
   onSelect: () => void
 }) {
   const meta = PATH_BADGE_META[path.level]
   const totals = getPathTotals(path)
   const Icon = meta.icon
+  // Subtitle copy when the prereq isn't met yet. We could derive
+  // the level dynamically but the only configured prereq today is
+  // "level-complete: n5", so keeping it simple.
+  const prereqSubtitle =
+    prereqLocked && path.prerequisite?.kind === "level-complete"
+      ? `Complete ${path.prerequisite.level.toUpperCase()} to unlock drills`
+      : null
   return (
     <button
       type="button"
@@ -164,7 +204,9 @@ function PathTile({
           ? "border-foreground/15 bg-card shadow-sm"
           : disabled
             ? "border-dashed border-foreground/10 bg-card/30 opacity-70"
-            : "border-transparent hover:border-foreground/10 hover:bg-card/60",
+            : prereqLocked
+              ? "border-amber-500/20 bg-amber-500/5 hover:border-amber-500/40 hover:bg-amber-500/10"
+              : "border-transparent hover:border-foreground/10 hover:bg-card/60",
       )}
     >
       <span
@@ -176,7 +218,7 @@ function PathTile({
           disabled && "grayscale",
         )}
       >
-        {disabled ? (
+        {disabled || prereqLocked ? (
           <Lock className="size-4" strokeWidth={2.25} />
         ) : (
           <Icon className="size-4" strokeWidth={2.25} />
@@ -190,14 +232,22 @@ function PathTile({
           <span
             className={cn(
               "text-[10px] font-bold uppercase tracking-wider",
-              disabled ? "text-muted-foreground/70" : meta.tone,
+              disabled
+                ? "text-muted-foreground/70"
+                : prereqLocked
+                  ? "text-amber-700 dark:text-amber-300"
+                  : meta.tone,
             )}
           >
-            {disabled ? "Locked" : path.badge}
+            {disabled
+              ? "Locked"
+              : prereqLocked
+                ? "Preview"
+                : path.badge}
           </span>
         </div>
         <p className="truncate text-[11px] text-muted-foreground">
-          {path.textbook}
+          {prereqSubtitle ?? path.textbook}
         </p>
       </div>
       <span className="hidden shrink-0 text-[10px] font-medium text-muted-foreground tabular-nums sm:inline">
@@ -225,13 +275,32 @@ function PathTile({
 function LessonGrid({
   path,
   progressByLesson,
+  prereqMet,
 }: {
   path: DojoPath
   progressByLesson: Record<string, LessonProgressLite>
+  prereqMet: boolean
 }) {
   const totals = getPathTotals(path)
+  // Banner copy for prereq-locked paths. Same logic as the path tile
+  // subtitle, but worded for the grid header.
+  const prereqBanner =
+    !prereqMet && path.prerequisite?.kind === "level-complete"
+      ? `You're previewing ${path.label}. Finish every ${path.prerequisite.level.toUpperCase()} lesson to unlock these drills.`
+      : null
   return (
     <div className="space-y-2">
+      {prereqBanner && (
+        <div
+          role="status"
+          className={cn(
+            "flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-800 dark:text-amber-200",
+          )}
+        >
+          <Lock className="mt-0.5 size-3.5 shrink-0" strokeWidth={2.5} />
+          <p className="leading-snug">{prereqBanner}</p>
+        </div>
+      )}
       <header className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-1">
         <div className="flex items-baseline gap-2">
           <h2 className="text-sm font-semibold tracking-tight">
@@ -273,6 +342,7 @@ function LessonGrid({
             key={lesson.id}
             lesson={lesson}
             progress={progressByLesson[lesson.id] ?? null}
+            prereqMet={prereqMet}
           />
         ))}
       </div>
@@ -304,9 +374,13 @@ function LessonGrid({
 function LessonCard({
   lesson,
   progress,
+  prereqMet,
 }: {
   lesson: DojoLesson
   progress: LessonProgressLite | null
+  /** When false, the card stays clickable (preview mode) but renders
+   *  with a locked chip; the lesson page itself disables drills. */
+  prereqMet: boolean
 }) {
   const locked = lesson.status === "locked"
   // A lesson is "completed" if either the catalog says so OR the user
@@ -321,6 +395,7 @@ function LessonCard({
       lesson={lesson}
       interactive={!locked}
       progress={progress}
+      prereqMet={prereqMet}
     />
   )
 
@@ -346,6 +421,7 @@ function LessonCard({
         "hover:-translate-y-px hover:border-foreground/20 hover:bg-card hover:shadow-md",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/30",
         completed && "border-emerald-500/40 bg-emerald-500/[0.04]",
+        !prereqMet && "border-amber-500/30 bg-amber-500/[0.04]",
       )}
     >
       {inner}
@@ -357,10 +433,12 @@ function LessonCardInner({
   lesson,
   interactive,
   progress,
+  prereqMet,
 }: {
   lesson: DojoLesson
   interactive: boolean
   progress: LessonProgressLite | null
+  prereqMet: boolean
 }) {
   const locked = lesson.status === "locked"
   const completed = lesson.status === "completed" || !!progress?.completed
@@ -486,7 +564,21 @@ function LessonCardInner({
             </span>
           )
         })}
-        {(completed || inProgress) && (
+        {/* Status chip priority: prereq-locked > completed > in-progress.
+            Prereq-locked wins because it's the bottleneck — even if
+            the user has somehow progressed in this lesson before the
+            gate was added, we tell them what to do next. */}
+        {!prereqMet && !locked ? (
+          <span
+            className={cn(
+              "ml-auto inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+              "bg-amber-500/15 text-amber-700 ring-1 ring-inset ring-amber-500/30 dark:text-amber-300",
+            )}
+          >
+            <Lock className="size-2.5" strokeWidth={3} />
+            Preview
+          </span>
+        ) : (completed || inProgress) ? (
           <span
             className={cn(
               "ml-auto inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
@@ -506,7 +598,7 @@ function LessonCardInner({
               </>
             )}
           </span>
-        )}
+        ) : null}
       </div>
     </>
   )

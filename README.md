@@ -165,9 +165,18 @@ and maps cleanly to JLPT levels.
   lessons, grammar/vocab/listening counts). Sets the "you have a teacher"
   tone for the page.
 - **Path selector** — horizontal chips, one per JLPT level, with a
-  per-path icon (Sparkles for N5, Trophy for N4) and a `Locked` state for
-  paths that aren't ready yet. Phase 1 ships **N5 unlocked, N4 visible
-  but locked** so the road map is obvious without being clickable.
+  per-path icon (Sparkles for N5, Trophy for N4). N5 is open from day
+  one; N4 ships **fully authored but gated** behind a runtime
+  `prerequisite` (`{ kind: "level-complete", level: "n5" }` on the
+  N4 path). Until the user has passed every section of every N5
+  lesson, N4 renders in a *preview* state — the tile shows a
+  "Complete N5 to unlock drills" subtitle, lesson cards remain
+  clickable so users can read the lesson view, but section drills
+  redirect back with a "Preview mode" banner. The gate is enforced in
+  three places that share one helper: the `/dojo` RSC
+  (`getPrereqMetByLevel`), the `/dojo/[level]/[lessonId]/[section]`
+  + `…/drill` RSCs (`isPathPrereqMet`), and `submitDojoSection` on
+  the API surface (throws `DojoPrereqUnmetError`, mapped to a 403).
 - **Lesson grid** — responsive 1→2→3→4 columns. Each card has a tight
   vertical hierarchy: number badge + title + italic theme line at the
   top, the one-line summary as the lead, a quiet "Covers" caption with
@@ -228,11 +237,12 @@ and maps cleanly to JLPT levels.
 
 | Lesson | Title | Grammar | Vocab | Listening |
 |---:|---|---:|---:|---:|
-| N5 · 1 | New Friends | 4 | 20 | 4 |
-| N5 · 2 | Shopping | 5 | 20 | 4 |
-| N5 · 3 | Making a Date | 5 | 22 | 4 |
-| N5 · 4–12 | _coming soon — catalog only_ | – | – | – |
-| N4 · 13–23 | _entire path locked_ | – | – | – |
+| N5 · 1–12 | Genki I — full N5 grammar surface | 4–5 ea. | 20–22 ea. | 4 ea. |
+| N4 · 13–23 | Genki II — full N4 grammar surface | 4 ea. | ~20 ea. | 4 ea. |
+
+> N4 lessons are authored end-to-end but **drill access is gated
+> behind full N5 completion**. Locked users can still open every N4
+> lesson in preview mode to see what's coming.
 
 The display layer (lesson titles, highlights, section counts) lives in
 [`src/lib/dojo.ts`](src/lib/dojo.ts) with helpers `isLessonLive`,

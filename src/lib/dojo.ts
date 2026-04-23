@@ -26,7 +26,8 @@
 //
 // Coverage status:
 //   * n5-l1 … n5-l12      → live (full content — N5 complete)
-//   * n4-l13 … n4-l23     → coming-soon (entire path locked)
+//   * n4-l13 … n4-l23     → live (full content, gated behind N5
+//                           completion via DojoPath.prerequisite)
 // =====================================================================
 
 import type { LucideIcon } from "lucide-react"
@@ -80,6 +81,17 @@ export type DojoLesson = {
 
 export type DojoPathStatus = "available" | "locked"
 
+/** Declarative gate for a path. Distinct from `status` because a path
+ *  can have *all its content authored* (`status: "available"`) yet
+ *  still be locked for a specific user until they clear an earlier
+ *  level — N4 hides behind N5 completion, for example. The field is
+ *  data-only; runtime evaluation lives in `dojo-server.ts`. */
+export type DojoPathPrerequisite = {
+  kind: "level-complete"
+  /** The level whose lessons must all be completed. */
+  level: DojoLevel
+}
+
 export type DojoPath = {
   level: DojoLevel
   /** Display label, e.g. "JLPT N5". */
@@ -91,6 +103,10 @@ export type DojoPath = {
   textbook: string
   description: string
   status: DojoPathStatus
+  /** Optional runtime prerequisite. When present, the path renders
+   *  in a "preview" state until the gate is satisfied — content is
+   *  visible but drills don't dispatch. */
+  prerequisite?: DojoPathPrerequisite
   lessons: readonly DojoLesson[]
 }
 
@@ -346,11 +362,11 @@ const N4_LESSONS: readonly DojoLesson[] = [
     jpTitle: "Arubaito-sagashi",
     summary: "Potential form: 'can do' and 'is able to'.",
     highlights: ["Potential form", "見える / 聞こえる", "しか…ない"],
-    status: "locked",
+    status: "available",
     sections: [
-      { kind: "grammar", count: 5, status: "coming-soon" },
-      { kind: "vocab", count: 46, status: "coming-soon" },
-      { kind: "listening", count: 3, status: "coming-soon" },
+      { kind: "grammar", count: 4, status: "live" },
+      { kind: "vocab", count: 20, status: "live" },
+      { kind: "listening", count: 4, status: "live" },
     ],
   },
   {
@@ -361,11 +377,11 @@ const N4_LESSONS: readonly DojoLesson[] = [
     jpTitle: "Barentain Dee",
     summary: "Giving and receiving — あげる, くれる, もらう.",
     highlights: ["あげる / くれる / もらう", "-te ageru / kureru", "Conditional たら"],
-    status: "locked",
+    status: "available",
     sections: [
-      { kind: "grammar", count: 6, status: "coming-soon" },
-      { kind: "vocab", count: 44, status: "coming-soon" },
-      { kind: "listening", count: 3, status: "coming-soon" },
+      { kind: "grammar", count: 4, status: "live" },
+      { kind: "vocab", count: 20, status: "live" },
+      { kind: "listening", count: 4, status: "live" },
     ],
   },
   {
@@ -375,12 +391,12 @@ const N4_LESSONS: readonly DojoLesson[] = [
     title: "Looking for a Club",
     jpTitle: "Saakuru-sagashi",
     summary: "Volitional form, plans (-you to omou), and let me (-sasete).",
-    highlights: ["-volitional", "-you to omou", "Conjunctions ば"],
-    status: "locked",
+    highlights: ["Volitional", "-you to omou", "Conditional ば"],
+    status: "available",
     sections: [
-      { kind: "grammar", count: 5, status: "coming-soon" },
-      { kind: "vocab", count: 42, status: "coming-soon" },
-      { kind: "listening", count: 3, status: "coming-soon" },
+      { kind: "grammar", count: 4, status: "live" },
+      { kind: "vocab", count: 20, status: "live" },
+      { kind: "listening", count: 4, status: "live" },
     ],
   },
   {
@@ -391,11 +407,11 @@ const N4_LESSONS: readonly DojoLesson[] = [
     jpTitle: "Wasuremono",
     summary: "te-form helpers — try, finish, do in advance.",
     highlights: ["-te miru", "-te shimau", "-te oku"],
-    status: "locked",
+    status: "available",
     sections: [
-      { kind: "grammar", count: 6, status: "coming-soon" },
-      { kind: "vocab", count: 40, status: "coming-soon" },
-      { kind: "listening", count: 3, status: "coming-soon" },
+      { kind: "grammar", count: 4, status: "live" },
+      { kind: "vocab", count: 20, status: "live" },
+      { kind: "listening", count: 4, status: "live" },
     ],
   },
   {
@@ -406,11 +422,11 @@ const N4_LESSONS: readonly DojoLesson[] = [
     jpTitle: "Guchi to Onegai",
     summary: "Hearsay (-sou), conjecture (-rashii), and polite requests.",
     highlights: ["-sou desu (hearsay)", "-rashii", "-te hoshii"],
-    status: "locked",
+    status: "available",
     sections: [
-      { kind: "grammar", count: 5, status: "coming-soon" },
-      { kind: "vocab", count: 42, status: "coming-soon" },
-      { kind: "listening", count: 3, status: "coming-soon" },
+      { kind: "grammar", count: 4, status: "live" },
+      { kind: "vocab", count: 20, status: "live" },
+      { kind: "listening", count: 4, status: "live" },
     ],
   },
   {
@@ -421,11 +437,11 @@ const N4_LESSONS: readonly DojoLesson[] = [
     jpTitle: "Jon-san no Nikki",
     summary: "Transitive vs intransitive verb pairs.",
     highlights: ["他動詞 vs 自動詞", "-te aru", "-nagara"],
-    status: "locked",
+    status: "available",
     sections: [
-      { kind: "grammar", count: 5, status: "coming-soon" },
-      { kind: "vocab", count: 44, status: "coming-soon" },
-      { kind: "listening", count: 3, status: "coming-soon" },
+      { kind: "grammar", count: 4, status: "live" },
+      { kind: "vocab", count: 20, status: "live" },
+      { kind: "listening", count: 4, status: "live" },
     ],
   },
   {
@@ -435,12 +451,12 @@ const N4_LESSONS: readonly DojoLesson[] = [
     title: "Meeting the Boss",
     jpTitle: "Joushi to Au",
     summary: "Honorifics — 尊敬語 (sonkeigo).",
-    highlights: ["お/ご + verb", "Honorific verbs", "いらっしゃる"],
-    status: "locked",
+    highlights: ["お〜になる", "Honorific verbs", "いらっしゃる"],
+    status: "available",
     sections: [
-      { kind: "grammar", count: 5, status: "coming-soon" },
-      { kind: "vocab", count: 40, status: "coming-soon" },
-      { kind: "listening", count: 3, status: "coming-soon" },
+      { kind: "grammar", count: 4, status: "live" },
+      { kind: "vocab", count: 20, status: "live" },
+      { kind: "listening", count: 4, status: "live" },
     ],
   },
   {
@@ -450,12 +466,12 @@ const N4_LESSONS: readonly DojoLesson[] = [
     title: "Mary the Tenant",
     jpTitle: "Meari-san no Shitaku",
     summary: "Humble forms — 謙譲語 (kenjougo).",
-    highlights: ["お/ご + verb + する", "Humble verbs", "-saseru (causative)"],
-    status: "locked",
+    highlights: ["お〜する", "申す / 参る", "ございます"],
+    status: "available",
     sections: [
-      { kind: "grammar", count: 5, status: "coming-soon" },
-      { kind: "vocab", count: 42, status: "coming-soon" },
-      { kind: "listening", count: 3, status: "coming-soon" },
+      { kind: "grammar", count: 4, status: "live" },
+      { kind: "vocab", count: 20, status: "live" },
+      { kind: "listening", count: 4, status: "live" },
     ],
   },
   {
@@ -464,13 +480,13 @@ const N4_LESSONS: readonly DojoLesson[] = [
     number: 21,
     title: "A Korean Friend",
     jpTitle: "Kankokujin no Tomodachi",
-    summary: "Passive voice and -te form combinations.",
-    highlights: ["Passive form", "-te ageru/morau (favours)", "Conditional ば"],
-    status: "locked",
+    summary: "Passive voice and 'because' with ので.",
+    highlights: ["Passive form", "ので", "〜方"],
+    status: "available",
     sections: [
-      { kind: "grammar", count: 6, status: "coming-soon" },
-      { kind: "vocab", count: 44, status: "coming-soon" },
-      { kind: "listening", count: 3, status: "coming-soon" },
+      { kind: "grammar", count: 4, status: "live" },
+      { kind: "vocab", count: 20, status: "live" },
+      { kind: "listening", count: 4, status: "live" },
     ],
   },
   {
@@ -479,13 +495,13 @@ const N4_LESSONS: readonly DojoLesson[] = [
     number: 22,
     title: "Japanese Culture",
     jpTitle: "Nihon no Bunka",
-    summary: "Causative form (-saseru) and giving permission.",
-    highlights: ["Causative form", "-saseru kudasai", "ように・ために"],
-    status: "locked",
+    summary: "Causative form and goal-oriented ように・ために.",
+    highlights: ["Causative", "〜させてください", "ように・ために"],
+    status: "available",
     sections: [
-      { kind: "grammar", count: 6, status: "coming-soon" },
-      { kind: "vocab", count: 42, status: "coming-soon" },
-      { kind: "listening", count: 3, status: "coming-soon" },
+      { kind: "grammar", count: 4, status: "live" },
+      { kind: "vocab", count: 20, status: "live" },
+      { kind: "listening", count: 4, status: "live" },
     ],
   },
   {
@@ -495,12 +511,12 @@ const N4_LESSONS: readonly DojoLesson[] = [
     title: "Complaint and Request",
     jpTitle: "Fuman to Onegai",
     summary: "Causative-passive — 'was made to do something'.",
-    highlights: ["Causative-passive", "-te kara", "-ba…hodo"],
-    status: "locked",
+    highlights: ["Causative-passive", "〜やすい / にくい", "〜ば〜ほど"],
+    status: "available",
     sections: [
-      { kind: "grammar", count: 5, status: "coming-soon" },
-      { kind: "vocab", count: 40, status: "coming-soon" },
-      { kind: "listening", count: 3, status: "coming-soon" },
+      { kind: "grammar", count: 4, status: "live" },
+      { kind: "vocab", count: 20, status: "live" },
+      { kind: "listening", count: 4, status: "live" },
     ],
   },
 ]
@@ -523,7 +539,8 @@ export const DOJO_PATHS: readonly DojoPath[] = [
     textbook: "Genki II · Lessons 13–23",
     description:
       "Casual speech, keigo, transitive/intransitive, conditional forms.",
-    status: "locked",
+    status: "available",
+    prerequisite: { kind: "level-complete", level: "n5" },
     lessons: N4_LESSONS,
   },
 ] as const
@@ -545,6 +562,17 @@ export function findLesson(lessonId: string): DojoLesson | null {
   for (const path of DOJO_PATHS) {
     const found = path.lessons.find((l) => l.id === lessonId)
     if (found) return found
+  }
+  return null
+}
+
+/** Locate the path that owns a given lesson id. Used by the server-
+ *  side prereq guard to evaluate `path.prerequisite` before allowing
+ *  a section submission. Returns `null` if the lesson isn't in any
+ *  path (which shouldn't happen at runtime — caller treats as 404). */
+export function findPathForLesson(lessonId: string): DojoPath | null {
+  for (const path of DOJO_PATHS) {
+    if (path.lessons.some((l) => l.id === lessonId)) return path
   }
   return null
 }

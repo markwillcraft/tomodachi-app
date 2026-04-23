@@ -11,6 +11,7 @@ import {
 import { getLessonContent } from "@/lib/dojo-content"
 import {
   getDojoLessonProgress,
+  isPathPrereqMet,
   isSectionDrillable,
 } from "@/lib/dojo-server"
 import { LessonView } from "./lesson-view"
@@ -66,6 +67,13 @@ export default async function DojoSectionLessonPage({
   const sectionKind = section as DojoSectionKind
 
   if (!isSectionDrillable(lessonId, sectionKind)) notFound()
+
+  // If the path is gated behind a runtime prerequisite the user
+  // hasn't met yet, bounce them back to the lesson detail (which
+  // renders in preview mode + a clear "Finish XYZ" banner).
+  if (!(await isPathPrereqMet(userId, path))) {
+    redirect(`/dojo/${level}/${lessonId}`)
+  }
 
   const content = getLessonContent(lessonId)
   if (!content) notFound()

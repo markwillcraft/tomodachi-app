@@ -16,6 +16,7 @@ import {
 import {
   DOJO_PASS_THRESHOLD,
   getDojoLessonProgress,
+  isPathPrereqMet,
   isSectionDrillable,
 } from "@/lib/dojo-server"
 import { DrillRunner } from "../drill-runner"
@@ -57,6 +58,15 @@ export default async function DojoSectionDrillPage({
   const sectionKind = section as DojoSectionKind
 
   if (!isSectionDrillable(lessonId, sectionKind)) notFound()
+
+  // Hard gate: if the path requires a prerequisite the user hasn't
+  // satisfied yet, send them back to the lesson view (which renders
+  // the preview UI + "Finish XYZ" banner). The lesson view is the
+  // single user-facing surface that explains *why* drills are
+  // hidden, so we always funnel through it.
+  if (!(await isPathPrereqMet(userId, path))) {
+    redirect(`/dojo/${level}/${lessonId}`)
+  }
 
   const questions = getSectionDrills(lessonId, sectionKind)
   const listening =
