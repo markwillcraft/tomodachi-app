@@ -75,10 +75,11 @@ export function ShopBrowser() {
       />
 
       <div className="flex min-w-0 flex-col gap-3">
-        {activeCategory && (
-          <ShelfHeader category={activeCategory} count={activeItems.length} />
-        )}
-
+        {/* The "Headwear · Hats, masks… · 10 items" row used to live
+            here. Removed so the shelf reclaims the vertical space and
+            the page no longer needs to scroll. The label moved to the
+            active rail tile (see RailTile, two-line variant) and the
+            item count is already shown there as a chip. */}
         {activeCategory && (
           <Shelf
             key={activeCategory.id}
@@ -212,32 +213,6 @@ function RailTile({
         </span>
       )}
     </button>
-  )
-}
-
-// ---------- shelf header ----------
-
-function ShelfHeader({
-  category,
-  count,
-}: {
-  category: ShopCategory
-  count: number
-}) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 px-1">
-      <div className="min-w-0">
-        <h2 className="text-sm font-semibold tracking-tight">
-          {category.label}
-          <span className="ml-2 font-normal text-xs text-muted-foreground">
-            {category.description}
-          </span>
-        </h2>
-      </div>
-      <span className="shrink-0 rounded-full border bg-card px-2 py-0.5 text-[10px] font-medium text-muted-foreground tabular-nums">
-        {count} {count === 1 ? "item" : "items"}
-      </span>
-    </div>
   )
 }
 

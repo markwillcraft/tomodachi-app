@@ -90,6 +90,17 @@ export async function grantWeeklyFreezeIfDue(
   if (available >= MAX_STORED_FREEZES) return false;
 
   const grantKey = `weekly:${localWeekKey(new Date(), tz)}:${tz}`;
+  // Pre-check the unique key. The catch-P2002 below is still a safety
+  // net for the rare concurrent-call race, but pre-checking stops Prisma
+  // from logging `prisma:error` noise on every duplicate grant attempt
+  // (e.g. when the dashboard / dojo / shop pages all call this in
+  // parallel on a single page load).
+  const existing = await prisma.streakFreeze.findUnique({
+    where: { userId_grantKey: { userId, grantKey } },
+    select: { id: true },
+  });
+  if (existing) return false;
+
   try {
     await prisma.streakFreeze.create({
       data: {

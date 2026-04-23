@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowRight, Coins, Sparkles, Store, TrendingUp } from "lucide-react";
@@ -102,38 +103,78 @@ function BalanceHeader({
         className="pointer-events-none absolute inset-0 opacity-[0.06] [background-image:radial-gradient(currentColor_1px,transparent_1px)] [background-size:18px_18px] text-foreground"
       />
 
-      <div className="relative flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3.5 sm:px-5 sm:py-4">
-        {/* ---- Brand mark ---- */}
-        <div className="flex min-w-0 flex-1 items-center gap-3.5">
-          <span
-            className={cn(
-              "relative flex size-12 shrink-0 items-center justify-center rounded-xl",
-              "bg-gradient-to-br from-amber-400 to-amber-600 text-white",
-              "shadow-[0_6px_16px_-4px_rgba(245,158,11,0.55),inset_0_1px_0_0_rgba(255,255,255,0.35)]",
-              "ring-1 ring-amber-300/50",
-            )}
-          >
-            <Store className="size-5" strokeWidth={2.5} />
-            {/* Currency notch — mirrors the sparkle medallion on the
-                inventory brand mark; both anchor a small "feature
-                marker" in the lower-right corner. */}
-            <span className="absolute -bottom-1 -right-1 flex size-4 items-center justify-center rounded-full border-2 border-background bg-amber-300 text-[8px] font-black text-amber-900 shadow-sm">
-              ¥
+      {/* Soft "lantern glow" — a wider radial sat behind Dachi so the
+          shop-owner stands in a warm pool of light, mirroring the
+          sensei's tatami sun on the Dojo header. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-2 top-2 size-48 rounded-full bg-[radial-gradient(circle,rgba(253,224,71,0.20),transparent_70%)] sm:size-64"
+      />
+
+      <div className="relative flex flex-wrap items-stretch gap-x-5 gap-y-3 p-3.5 sm:gap-x-6 sm:p-4">
+        {/* ---- Shop-owner portrait ----
+            Same composition pattern as Dachi-sensei on the Dojo:
+            a large mascot anchored at the bottom-left of the header
+            with a ground shadow + brand chip pinned to its lower
+            corner. Tinted amber / rose so it reads as the storefront. */}
+        <div className="relative flex shrink-0 items-end self-stretch">
+          <div className="relative size-28 sm:size-36 lg:size-40">
+            {/* Ground shadow under Dachi's feet for depth. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute bottom-1 left-1/2 h-3 w-4/5 -translate-x-1/2 rounded-full bg-foreground/20 blur-md"
+            />
+            <Image
+              src="/Dachi-shop-owner.png"
+              alt="Dachi-san, the Tomodachi Store shopkeep"
+              fill
+              priority
+              sizes="(min-width: 1024px) 160px, (min-width: 640px) 144px, 112px"
+              className="select-none object-contain drop-shadow-md"
+              draggable={false}
+            />
+            {/* Brand chip — same pattern as the sensei's "Sensei"
+                medallion, retinted to amber/rose for the storefront. */}
+            <span
+              className={cn(
+                "absolute -bottom-1 right-0 inline-flex items-center gap-1 rounded-full border-2 border-background px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider shadow-sm",
+                "bg-gradient-to-br from-amber-400 to-rose-500 text-white",
+              )}
+            >
+              <Store className="size-2.5" strokeWidth={3} />
+              Owner
             </span>
-          </span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-              <h1 className="text-base font-bold tracking-tight sm:text-lg">
-                Tomodachi Store
-              </h1>
-              <span className="hidden text-[11px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-300/80 sm:inline">
-                Cosmetics · Spend coins
-              </span>
+          </div>
+        </div>
+
+        {/* ---- Speech bubble + meta + meters ---- */}
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-2">
+          <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+            <h1 className="text-base font-bold tracking-tight sm:text-lg">
+              Tomodachi Store
+            </h1>
+            <span className="hidden text-[11px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-300/80 sm:inline">
+              Cosmetics · Spend coins
+            </span>
+          </div>
+
+          {/* Speech bubble — soft card with a tail pointing back
+              toward Dachi's face. Copy stays one short line so the
+              header doesn't grow taller than the inventory's. */}
+          <div className="relative">
+            <div
+              aria-hidden
+              className="absolute -left-2 top-1/2 size-3 -translate-y-1/2 rotate-45 border-b border-l bg-card sm:-left-2.5"
+            />
+            <div className="relative rounded-xl border bg-card/80 px-3 py-1.5 shadow-sm backdrop-blur-sm sm:px-3.5 sm:py-2">
+              <p className="text-[11px] leading-relaxed text-foreground sm:text-xs">
+                <span className="font-bold tracking-tight">
+                  Welcome, friend!
+                </span>{" "}
+                {totalItems} cosmetics across {totalCategories} categories —
+                spend those coins and dress up your Dachi.
+              </p>
             </div>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
-              Browse {totalItems} cosmetics across {totalCategories} categories
-              and dress up your Dachi.
-            </p>
           </div>
         </div>
 
@@ -142,7 +183,7 @@ function BalanceHeader({
             visual pattern is shared. The "Wallet" bar maxes out at
             500 coins as a soft target, then keeps showing the real
             balance as the labeled number. */}
-        <div className="flex shrink-0 flex-col gap-1.5">
+        <div className="flex shrink-0 flex-col justify-center gap-1.5">
           <ProgressMeter
             label="Wallet"
             current={balance}
@@ -185,7 +226,7 @@ function BalanceHeader({
           asChild
           size="sm"
           className={cn(
-            "group/cta relative h-auto overflow-hidden rounded-xl border-0 p-0",
+            "group/cta relative h-auto self-center overflow-hidden rounded-xl border-0 p-0",
             "bg-gradient-to-br from-violet-400 via-violet-500 to-sky-500",
             "text-white font-semibold",
             "ring-1 ring-violet-300/60",

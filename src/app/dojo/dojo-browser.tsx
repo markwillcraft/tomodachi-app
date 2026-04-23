@@ -267,7 +267,7 @@ function LessonGrid({
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {path.lessons.map((lesson) => (
           <LessonCard
             key={lesson.id}
@@ -329,7 +329,7 @@ function LessonCard({
       <div
         aria-disabled
         className={cn(
-          "group/card relative flex h-full flex-col gap-2 overflow-hidden rounded-xl border border-dashed bg-card/40 p-3 opacity-70",
+          "group/card relative flex h-full flex-col gap-2.5 overflow-hidden rounded-xl border border-dashed bg-card/40 p-3.5 opacity-70 sm:p-4",
         )}
       >
         {inner}
@@ -342,7 +342,7 @@ function LessonCard({
       href={href}
       aria-label={`Open ${lesson.title} lesson`}
       className={cn(
-        "group/card relative flex h-full flex-col gap-2 overflow-hidden rounded-xl border bg-card/60 p-3 transition-all duration-150",
+        "group/card relative flex h-full flex-col gap-2.5 overflow-hidden rounded-xl border bg-card/60 p-3.5 transition-all duration-150 sm:p-4",
         "hover:-translate-y-px hover:border-foreground/20 hover:bg-card hover:shadow-md",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/30",
         completed && "border-emerald-500/40 bg-emerald-500/[0.04]",

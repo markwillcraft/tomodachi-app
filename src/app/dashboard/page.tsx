@@ -186,7 +186,7 @@ export default async function DashboardPage() {
         {/* Main — companion on the left, adaptive greeting + concrete state on the right. */}
         <div className="relative flex items-center gap-5 px-5 py-5 sm:gap-6 sm:px-6 sm:py-6">
           <Image
-            src="/Dachi-mascot.png"
+            src="/Dachi-boy.png"
             alt=""
             aria-hidden
             width={240}

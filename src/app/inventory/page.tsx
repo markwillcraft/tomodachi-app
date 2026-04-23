@@ -466,7 +466,7 @@ function MascotPreview() {
           className="pointer-events-none absolute bottom-4 left-1/2 h-4 w-3/5 -translate-x-1/2 rounded-full bg-foreground/15 blur-md"
         />
         <Image
-          src="/Dachi-mascot.png"
+          src="/Dachi-boy.png"
           alt="Your Dachi mascot — base appearance"
           fill
           sizes="(min-width: 1280px) 400px, (min-width: 1024px) 360px, 80vw"

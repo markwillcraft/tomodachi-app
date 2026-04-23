@@ -351,16 +351,17 @@ export function AppShell({
         <main>
           <div
             className={cn(
-              "mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:py-10",
-              // Cosmetics surfaces (Store, Inventory) get the full
-              // available canvas (capped at the screen-2xl breakpoint
-              // so it doesn't run away on ultra-wide displays). The
-              // shop shelf benefits from every pixel — more visible
-              // cards per row = less scrolling. Everything else stays
-              // at the reading-friendly 5xl width.
+              "mx-auto px-4 sm:px-6",
+              // Cosmetics surfaces (Store, Inventory) and the Dojo
+              // grid get the full available canvas (capped at the
+              // screen-2xl breakpoint) AND tighter vertical padding
+              // because their internal layouts (shelf, preview grid,
+              // lesson grid) are designed to be a single-screen fit.
+              // Everything else stays at the reading-friendly 5xl
+              // width with generous prose-style padding.
               isWideRoute(pathname)
-                ? "max-w-screen-2xl"
-                : "max-w-5xl",
+                ? "max-w-screen-2xl py-4 sm:py-5 lg:py-6"
+                : "max-w-5xl py-6 sm:py-8 lg:py-10",
             )}
           >
             {children}
@@ -536,17 +537,11 @@ function SidebarContents({
         </nav>
       </div>
 
-      {!hideSummaryPanels && (
-        <div
-          className={cn(
-            "shrink-0 space-y-3 border-t pt-3",
-            collapsed ? "px-2 pb-3" : "px-3 pb-3",
-          )}
-        >
-          <TodayPanel streak={streak} collapsed={collapsed} />
-          <SidebarCoinsPanel coins={coins} collapsed={collapsed} />
-        </div>
-      )}
+      {/* Bottom summary panels (streak + coins) were removed — they
+          pushed the sidebar past the viewport on shorter screens and
+          forced a scrollbar. Both metrics are still surfaced on the
+          dashboard / shop pages, so nothing is *lost*; the sidebar
+          just stays single-screen. */}
     </div>
   )
 }
