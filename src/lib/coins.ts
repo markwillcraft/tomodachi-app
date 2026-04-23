@@ -40,6 +40,13 @@ export const COIN_RULES = {
   kanaDrillPerCorrect: 1,
   kanaDrillPerfectBonus: 20,
   kanaDrillMinForBonus: 10,
+
+  // Dojo milestones (per-section pass + whole-lesson completion). The
+  // *attempt* coins come through awardForQuiz since dojo drills are
+  // logged as QuizAttempts. These are the *milestone* bonuses that fire
+  // exactly once when a user crosses a threshold for the first time.
+  dojoSectionPassBonus: 25,
+  dojoLessonCompleteBonus: 100,
 } as const;
 
 // =====================================================================
@@ -539,6 +546,41 @@ export async function syncTodaysCoins(userId: string): Promise<void> {
 
   // Finally, claim any newly-complete quests.
   await claimEligibleQuests(userId);
+}
+
+// Dojo milestone awards. Fires exactly once per (lesson, section)
+// pass and once per fully-completed lesson. The dedup keys
+// `dojo_pass:<lessonId>:<section>` and `dojo_lesson:<lessonId>`
+// guarantee that retakes don't double-pay.
+export async function awardForDojoMilestones(
+  userId: string,
+  lessonId: string,
+  section: string,
+  newlyPassed: boolean,
+  newlyCompletedLesson: boolean,
+): Promise<CoinAwardSummary> {
+  const out: CoinAwardSummary = { earned: 0, reasons: [] };
+  if (newlyPassed) {
+    const r = await awardCoins(
+      userId,
+      COIN_RULES.dojoSectionPassBonus,
+      "dojo_section_pass",
+      `dojo_pass:${lessonId}:${section}`,
+    );
+    if (r.awarded)
+      pushReason(out, "Dojo section passed", COIN_RULES.dojoSectionPassBonus);
+  }
+  if (newlyCompletedLesson) {
+    const r = await awardCoins(
+      userId,
+      COIN_RULES.dojoLessonCompleteBonus,
+      "dojo_lesson_complete",
+      `dojo_lesson:${lessonId}`,
+    );
+    if (r.awarded)
+      pushReason(out, "Dojo lesson complete", COIN_RULES.dojoLessonCompleteBonus);
+  }
+  return out;
 }
 
 // Kana muscle-memory drill is purely client-side, so the client posts a

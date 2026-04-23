@@ -20,7 +20,8 @@ does it. If you change behavior in code, update the matching section here.
 4. [Feature reference](#feature-reference)
    - [Authentication & multi-tenancy](#authentication--multi-tenancy)
    - [Vocabulary library](#vocabulary-library)
-   - [Study modes](#study-modes)
+   - [Dojo (guided curriculum)](#dojo-guided-curriculum)
+   - [Self-study](#self-study)
    - [Quiz engine](#quiz-engine)
    - [Spaced Repetition (SRS)](#spaced-repetition-srs)
    - [Streak & daily goal](#streak--daily-goal)
@@ -144,9 +145,161 @@ Three ways to build your library, all writing to the `Word` table:
 
 Words are deduped per user via `@@unique([userId, romaji])`.
 
-### Study modes
+### Dojo (guided curriculum)
 
-The Study hub (`/study`) is the main "do something" page. It has:
+The Dojo (`/dojo`) is the *guided* counterpart to Self-study. Where
+Self-study lets the learner pick any drill freely, the Dojo walks them
+through a curated curriculum based on **Genki I + II** (3rd ed., The Japan
+Times). Lessons are grouped into JLPT paths (N5 = Genki I lessons 1–12,
+N4 = Genki II lessons 13–23) and each lesson advertises three sections:
+**Grammar**, **Vocab**, and **Listening**.
+
+We deliberately do **not** mix Genki and Minna no Nihongo — their grammar
+ordering, vocabulary sets, and pedagogical assumptions disagree, and
+combining them would teach learners contradictory canonical forms. Genki
+was picked because it's built for self-study with bilingual scaffolding
+and maps cleanly to JLPT levels.
+
+- **Sensei header** — `/Dachi-sensei.png` mascot in a soft tatami spotlight
+  with an in-character welcome script and roll-up totals (paths open,
+  lessons, grammar/vocab/listening counts). Sets the "you have a teacher"
+  tone for the page.
+- **Path selector** — horizontal chips, one per JLPT level, with a
+  per-path icon (Sparkles for N5, Trophy for N4) and a `Locked` state for
+  paths that aren't ready yet. Phase 1 ships **N5 unlocked, N4 visible
+  but locked** so the road map is obvious without being clickable.
+- **Lesson grid** — responsive 1→2→3→4 columns. Each card has a tight
+  vertical hierarchy: number badge + title + italic theme line at the
+  top, the one-line summary as the lead, a quiet "Covers" caption with
+  the highlight grammar points dot-separated, and an inline section
+  meter (icon + count for Grammar / Vocab / Listening). Cards are
+  `<Link>`s to the lesson detail route — locked lessons render as
+  non-clickable dashed-border tiles instead.
+- **Lesson detail (`/dojo/[level]/[lessonId]`)** — breadcrumb (Dojo ›
+  Path › Lesson N), a richer lesson header with the path badge +
+  textbook reference + "You'll learn" highlight pills, then three
+  section cards (Grammar / Vocab / Listening). For lessons with live
+  content the cards link into the per-section **lesson view**; cards
+  show progress state (best score, attempts, "Start" / "Continue" /
+  "Retake" / ✓ Passed). Footer has prev / next lesson navigation.
+  Locked-path lessons render the same chrome but mark every section
+  as `Locked`.
+- **Section lesson view (`/dojo/[level]/[lessonId]/[section]`)** — the
+  *teaching* surface for each section. Grammar shows pattern
+  explanations, prose, and example sentences (each with a play-audio
+  button). Vocab presents a flashcard stack the user pages through
+  (front: kana/kanji + audio, flip: romaji + English). Listening lays
+  out every dialogue with a "Play audio" button and the JP / romaji /
+  English transcript. The "Start drill" CTA at the bottom is **hard-
+  gated** until the user has gone through the lesson: scroll-to-bottom
+  for grammar, every flashcard visited for vocab, every dialogue
+  played + scrolled to bottom for listening. Already-passed sections
+  skip the gate so retakes don't force a re-read.
+- **Section drills (`/dojo/[level]/[lessonId]/[section]/drill`)** — one
+  client-driven drill per kind, reached only via the lesson view's
+  "Start drill" CTA (direct URL still works). Grammar and Vocab use
+  multiple-choice with instant feedback + per-question explanation;
+  Listening renders a `ListeningCard` (Japanese line, native audio via
+  `speech.ts`, optional romaji + English transcript) and asks a
+  comprehension question per dialogue. Questions are shuffled
+  client-side per attempt; grammar/vocab cap at a sensible session
+  size to keep drills bite-sized. Server **re-grades** answers against
+  the canonical bank in `dojo-content.ts` so the score is tamper-proof.
+  Failed results surface a "Re-read lesson" button alongside "Retake".
+- **Pass threshold** — `DOJO_PASS_THRESHOLD = 80%` on a single attempt.
+  Below that the user can retake (the attempt still counts toward
+  streaks / coins). At 80%+ the section flips to **passed** and stays
+  passed forever; retakes still ratchet `bestScorePct` upward.
+- **Lesson completion** — when the third-and-final section flips to
+  passed in a single submission, the drill runner shows
+  `LessonCompleteModal`: Dachi-sensei, the lesson title, coin total,
+  any newly-unlocked achievements, and CTAs back to the lesson list or
+  on to the next lesson.
+- **Status states per lesson** — `available` (number badge, hover
+  chevron), `locked` (lock icon, dashed border, dimmed),
+  `completed` (check icon, emerald accent ring, surfaced from
+  `DojoProgress`).
+- **Sidebar** — the **Learn** group lists **Dojo** above **Self-study**.
+  Dojo's children deep-link to the N5 / N4 paths via `?level=` query
+  string; Self-study still exposes every drill (kana, vocab, grammar,
+  kanji, muscle memory) as quick-jump children.
+
+**Curriculum coverage (live now):**
+
+| Lesson | Title | Grammar | Vocab | Listening |
+|---:|---|---:|---:|---:|
+| N5 · 1 | New Friends | 4 | 20 | 4 |
+| N5 · 2 | Shopping | 5 | 20 | 4 |
+| N5 · 3 | Making a Date | 5 | 22 | 4 |
+| N5 · 4–12 | _coming soon — catalog only_ | – | – | – |
+| N4 · 13–23 | _entire path locked_ | – | – | – |
+
+The display layer (lesson titles, highlights, section counts) lives in
+[`src/lib/dojo.ts`](src/lib/dojo.ts) with helpers `isLessonLive`,
+`findLesson`, `getPathTotals`. The **content layer** (grammar
+explanations, vocab items, listening prompts, drill banks) lives in
+[`src/lib/dojo-content.ts`](src/lib/dojo-content.ts) — server-only,
+typed via `LessonContent` / `GrammarPoint` / `VocabItem` /
+`ListeningPrompt` / `DrillQuestion`. Server-side reads/writes for
+progress live in [`src/lib/dojo-server.ts`](src/lib/dojo-server.ts)
+(`getDojoProgressByLesson`, `getDojoLessonProgress`,
+`getCompletedLessonsCount`, `getDojoSectionsByKind`,
+`submitDojoSection`).
+
+**Persistence — `DojoProgress`:**
+
+```
+DojoProgress {
+  id, userId, lessonId, section,        // section: "grammar"|"vocab"|"listening"
+  bestScorePct Int @default(0),         // 0..100, ratchets upward
+  attempts Int @default(0),
+  passedAt DateTime?,                   // first time the section hit ≥80%; never cleared
+  @@unique([userId, lessonId, section]),
+  @@index([userId, lessonId]),
+  @@index([userId, passedAt])
+}
+```
+
+**Submission flow** (`POST /api/dojo/submit-section`):
+
+1. Auth + validate `lessonId` / `section` against the catalog and
+   `isSectionDrillable()` — coming-soon lessons are rejected.
+2. Re-grade the client's answers against the canonical drill bank.
+3. Insert a `QuizAttempt` row with `mode = "dojo_grammar" |
+   "dojo_vocab" | "dojo_listening"` so Dojo activity automatically
+   counts toward streaks, daily quests, and the standard quiz coin
+   bonuses via `awardForQuiz`.
+4. Upsert `DojoProgress` via `submitDojoSection()` and compute
+   `newlyPassed` / `newlyCompletedLesson` flags.
+5. Award Dojo-specific bonuses via `awardForDojoMilestones`:
+   `dojoSectionPassBonus = +25` on first pass of a section,
+   `dojoLessonCompleteBonus = +100` on first full-lesson clear.
+6. Run `evaluateAchievements()` and return the list of newly unlocked
+   milestones for the celebratory modal.
+
+**Achievement integration** — adds the `dojo` achievement category and
+the `dojo_lessons_completed` counter, with four tiers
+(`dojo_first_lesson`, `dojo_3_lessons`, `dojo_6_lessons`,
+`dojo_12_lessons`). The counter pulls from
+`getCompletedLessonsCount(userId)` so it stays in lockstep with
+`DojoProgress`.
+
+**N5 mastery integration** — Dojo lesson sections power two N5 mastery
+paths. The **Grammar** path's catalog is the 12 N5 lessons (a lesson
+is "mastered" when its grammar drill is passed); the **Listening**
+path mirrors the same catalog for its listening drill. Coming-soon
+lessons stay in the catalog so the path total reflects the full Genki
+I scope; attempted-but-not-passed sections show as **Started** in the
+mastery modal. Both paths carry weight `0.5` in the grand percentage,
+half that of kana / kanji / vocab, because their catalogs are smaller
+(12 items) and a single section pass is already worth ~8% of the path.
+
+### Self-study
+
+Self-study lives at `/study` (the route stays the same — only the sidebar
+label was renamed from "Study" to "Self-study" so the distinction with
+the **Dojo** is unambiguous). It's the *free-roam* practice room: pick
+any surface, no curriculum on top. It has:
 
 - **Quick Actions strip** (see [Quick Actions](#quick-actions)).
 - **Streak widget** with today's progress + the 30-day calendar.
@@ -269,6 +422,8 @@ Reward table (`COIN_RULES` in `src/lib/coins.ts`):
 | Kana drill base | +5 |
 | Per correct in kana drill | +1 |
 | Perfect kana drill (≥10 questions) | +20 |
+| First pass on a Dojo section (≥80%) | +25 |
+| Complete a full Dojo lesson (all 3 sections passed) | +100 |
 | Daily quests | see below |
 
 **Idempotency**: every grant has a `dedupKey` enforced via a unique constraint
@@ -298,7 +453,7 @@ a stable `id` (rename = re-lock — don't), an icon, a `kind`, and a numeric
 `goal`. The `Achievement` table records which the user has claimed
 (`@@unique(userId, achievementId)` makes evaluation idempotent).
 
-**Categories**: streak · quiz · study · mastery · rewards · milestone.
+**Categories**: streak · quiz · study · mastery · rewards · dojo · milestone.
 
 **Kinds** map to counters computed in `computeCounters()`:
 
@@ -308,6 +463,7 @@ a stable `id` (rename = re-lock — don't), an icon, a `kind`, and a numeric
 - `cards_viewed` (counted as **distinct words** studied, not raw view counts)
 - `kanji_chars_seen` (distinct chars across all kanji-related quiz prompts)
 - `srs_mastered` (sum of all `level >= MAX_SRS_LEVEL` items)
+- `dojo_lessons_completed` (lessons whose grammar + vocab + listening sections have all been passed)
 - `kana_mastered` / `kanji_mastered` / `vocab_mastered`
 - `n5_grand` (the headline; see below)
 
@@ -506,6 +662,7 @@ All tables are keyed by `userId` (Clerk id) for tenancy isolation.
 | `StreakFreeze` | Earned/consumed protection rows. Weekly grant key. |
 | `Achievement` | Claimed milestones, dedup'd by `(userId, achievementId)`. |
 | `CoinLedger` | Append-only coin history. Balance = sum(amount). Dedup'd by `dedupKey`. |
+| `DojoProgress` | Per-section Dojo progress (`bestScorePct`, `attempts`, `passedAt`). Unique on `(userId, lessonId, section)`. |
 
 Migrations live in `prisma/migrations/`. Use `npx prisma migrate dev --name <slug>`
 when you change the schema and `npx prisma migrate deploy` in CI/prod.
@@ -528,6 +685,7 @@ All endpoints require Clerk auth via `requireUserId()` and return JSON.
 | `/api/quiz/generate` | POST | Build a quiz set with smart sampling. |
 | `/api/quiz/submit` | POST | Persist results, advance SRS, award coins, evaluate achievements. |
 | `/api/quiz/redo-missed` | POST | Build a quiz from the user's recent misses. |
+| `/api/dojo/submit-section` | POST | Re-grade a Dojo section drill, upsert `DojoProgress`, log a `QuizAttempt`, award coins, evaluate achievements. |
 | `/api/study/review` | GET | Fetch the user's SRS-due items as a quiz set. |
 | `/api/study/kana-drill` | POST | Award coins for the muscle-memory drill. |
 | `/api/streak/freeze` | GET | Current freeze inventory. |
@@ -552,8 +710,8 @@ A few patterns the codebase leans on, kept here so refactors don't undo them:
   `KanaView` / `KanjiView` / `CardView`, one `Word.findMany` reused by both
   vocab levels and vocab studied) instead of looping per path.
 - **Static catalogs are computed once at module load.** `KANA_CATALOG`,
-  `KANJI_CATALOG`, `VOCAB_CATALOG`, `GRAMMAR_CATALOG` in `n5-paths.ts` build
-  on first import and are reused forever.
+  `KANJI_CATALOG`, `VOCAB_CATALOG`, `GRAMMAR_CATALOG`, `LISTENING_CATALOG`
+  in `n5-paths.ts` build on first import and are reused forever.
 - **No fire-and-forget achievement eval in layout.** Layout used to evaluate
   achievements on every page navigation; we removed it because the cost
   (~10 queries per nav) only paid off for unlocks that weren't surfaced
@@ -603,3 +761,5 @@ If something on a page feels off, the source-of-truth file is usually one of:
 | N5 Mastery model | `src/lib/n5-paths.ts` |
 | Quiz generation | `src/lib/quiz.ts` |
 | Time / timezone | `src/lib/time.ts` |
+| Shop / Inventory catalog | `src/lib/shop.ts` |
+| Dojo curriculum (Genki I + II) | `src/lib/dojo.ts` |

@@ -59,10 +59,17 @@ const CATEGORY_META: Record<AchievementCategory, CategoryMeta> = {
     blurb: "Your coin stash, over time.",
     tone: "from-emerald-500/15 via-background to-background",
   },
+  dojo: {
+    label: "Dojo",
+    short: "Dojo",
+    blurb: "Structured lessons, fully cleared.",
+    tone: "from-rose-500/10 via-background to-background",
+  },
 };
 
 const CATEGORY_ORDER: AchievementCategory[] = [
   "milestone",
+  "dojo",
   "streak",
   "quiz",
   "study",

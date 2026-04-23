@@ -2,7 +2,8 @@ import { prisma } from "./prisma";
 import { HIRAGANA, KATAKANA } from "./kana";
 import { N5_KANJI } from "./kanji";
 import { CATEGORIES } from "./categories";
-import { N5_LESSONS } from "./grammar";
+import { DOJO_PATHS } from "./dojo";
+import { getDojoSectionsByKind } from "./dojo-server";
 import { MAX_SRS_LEVEL } from "./srs";
 
 // =====================================================================
@@ -151,21 +152,25 @@ const PATHS: N5PathDef[] = [
     id: "grammar",
     label: "Grammar",
     shortLabel: "Grammar",
-    description: "Particles, sentence patterns, and conjugations.",
+    description: "Genki I lesson grammar drills, passed at 80% or better.",
     icon: "文",
     tone: "emerald",
-    status: "coming-soon",
-    weight: 1,
+    status: "live",
+    // Lower weight than kana/kanji/vocab because the catalog is much
+    // smaller (12 N5 lessons) so each item is already worth ~8% of
+    // the path on its own — we don't want a single section pass to
+    // drag the grand total up disproportionately.
+    weight: 0.5,
     completion: 1,
   },
   {
     id: "listening",
     label: "Listening",
     shortLabel: "Listen",
-    description: "Native-audio drills for ear training.",
+    description: "Genki I lesson listening drills, passed at 80% or better.",
     icon: "🎧",
     tone: "sky",
-    status: "coming-soon",
+    status: "live",
     weight: 0.5,
     completion: 1,
   },
@@ -255,14 +260,35 @@ const VOCAB_CATALOG: ReadonlyArray<{
   return Array.from(seen.values());
 })();
 
+// Grammar + listening N5 paths are powered by Dojo lesson sections.
+// Each catalog item is one Genki I lesson; an item counts as
+// "mastered" once the user passes that lesson's grammar (or
+// listening) drill at the Dojo pass threshold. Coming-soon Dojo
+// lessons stay in the catalog so the path total reflects the full
+// Genki I scope (12 lessons), but they can't actually be drilled
+// yet — `started` will be false for them across the board.
+const N5_DOJO_LESSONS = (
+  DOJO_PATHS.find((p) => p.level === "n5")?.lessons ?? []
+).slice();
+
 const GRAMMAR_CATALOG: ReadonlyArray<{
   key: string;
   label: string;
   sub: string;
-}> = N5_LESSONS.map((l) => ({
-  key: l.slug,
-  label: l.title,
-  sub: l.meaning,
+}> = N5_DOJO_LESSONS.map((l) => ({
+  key: l.id,
+  label: `Lesson ${l.number} · ${l.title}`,
+  sub: l.highlights.slice(0, 2).join(" · "),
+}));
+
+const LISTENING_CATALOG: ReadonlyArray<{
+  key: string;
+  label: string;
+  sub: string;
+}> = N5_DOJO_LESSONS.map((l) => ({
+  key: l.id,
+  label: `Lesson ${l.number} · ${l.title}`,
+  sub: l.summary,
 }));
 
 // Total catalog size per path. Exposed so the achievements page can
@@ -278,6 +304,7 @@ export function getN5PathTotal(id: N5PathId): number {
     case "grammar":
       return GRAMMAR_CATALOG.length;
     case "listening":
+      return LISTENING_CATALOG.length;
     case "writing":
     case "speaking":
       return 0;
@@ -313,6 +340,7 @@ function loadCatalog(id: N5PathId): readonly CatalogItem[] {
     case "grammar":
       return GRAMMAR_CATALOG;
     case "listening":
+      return LISTENING_CATALOG;
     case "writing":
     case "speaking":
       return [];
@@ -406,6 +434,7 @@ export async function getN5PathsProgress(
     PATHS.filter((p) => p.status === "live").map((p) => p.id),
   );
   const needsVocab = liveIds.has("vocab");
+  const needsDojo = liveIds.has("grammar") || liveIds.has("listening");
 
   const [
     reviewRows,
@@ -413,6 +442,7 @@ export async function getN5PathsProgress(
     kanjiViewRows,
     cardViewRows,
     wordRows,
+    dojoSections,
   ] = await Promise.all([
     // All ReviewState rows for kana/kanji/vocab in one query.
     liveIds.size > 0
@@ -456,6 +486,9 @@ export async function getN5PathsProgress(
           select: { id: true, romaji: true },
         })
       : Promise.resolve([] as Array<{ id: number; romaji: string }>),
+    needsDojo
+      ? getDojoSectionsByKind(userId)
+      : Promise.resolve(null),
   ]);
 
   // Bucket review rows by item type.
@@ -493,6 +526,29 @@ export async function getN5PathsProgress(
   const empty = new Map<string, number>();
   const emptySet = new Set<string>();
 
+  // Translate dojo section pass/attempt sets into the level/studied
+  // contract that buildPathProgress already understands. A passed
+  // section maps to MAX_SRS_LEVEL (mastered), an attempted-but-not-
+  // passed section maps to "studied" so the modal can show "Started".
+  const grammarLevels = new Map<string, number>();
+  const grammarStudied = new Set<string>();
+  const listeningLevels = new Map<string, number>();
+  const listeningStudied = new Set<string>();
+  if (dojoSections) {
+    for (const id of dojoSections.grammar.passed) {
+      grammarLevels.set(id, MAX_SRS_LEVEL);
+    }
+    for (const id of dojoSections.grammar.attempted) {
+      if (!grammarLevels.has(id)) grammarStudied.add(id);
+    }
+    for (const id of dojoSections.listening.passed) {
+      listeningLevels.set(id, MAX_SRS_LEVEL);
+    }
+    for (const id of dojoSections.listening.attempted) {
+      if (!listeningLevels.has(id)) listeningStudied.add(id);
+    }
+  }
+
   const paths: N5PathProgress[] = PATHS.map((def) => {
     switch (def.id) {
       case "kana":
@@ -502,7 +558,19 @@ export async function getN5PathsProgress(
       case "vocab":
         return buildPathProgress(def, VOCAB_CATALOG, vocabLevels, vocabStudied);
       case "grammar":
-        return buildPathProgress(def, GRAMMAR_CATALOG, empty, emptySet);
+        return buildPathProgress(
+          def,
+          GRAMMAR_CATALOG,
+          grammarLevels,
+          grammarStudied,
+        );
+      case "listening":
+        return buildPathProgress(
+          def,
+          LISTENING_CATALOG,
+          listeningLevels,
+          listeningStudied,
+        );
       default:
         // Coming-soon paths with empty catalogs — buildPathProgress
         // marks them as comingSoon automatically.

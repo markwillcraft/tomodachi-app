@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 import { getStreak } from "./streak";
 import { MAX_SRS_LEVEL } from "./srs";
 import { getN5PathGoal, getN5PathsProgress } from "./n5-paths";
+import { getCompletedLessonsCount } from "./dojo-server";
 
 // =====================================================================
 // Achievements / milestones
@@ -26,6 +27,7 @@ export type AchievementKind =
   | "kana_mastered"
   | "kanji_mastered"
   | "vocab_mastered"
+  | "dojo_lessons_completed"
   | "n5_grand";
 
 export type AchievementCategory =
@@ -34,6 +36,7 @@ export type AchievementCategory =
   | "study"
   | "mastery"
   | "rewards"
+  | "dojo"
   | "milestone";
 
 export type AchievementDef = {
@@ -198,6 +201,18 @@ const VOCAB_MASTERED: AchievementDef[] = [
   { id: "vocab_master_500", title: "Vocab old growth", description: "Master 500 vocab words.", icon: "🎋", category: "mastery", kind: "vocab_mastered", goal: 500 },
 ];
 
+// Dojo lesson completions. A lesson counts as "completed" when the
+// user has passed (>= 80% on a single attempt) all three of its
+// sections — grammar, vocab, listening. Goals are aspirational: only
+// lessons 1–3 of N5 ship with content right now, but the catalog
+// will grow and these tiers will unlock as they go.
+const DOJO_LESSONS: AchievementDef[] = [
+  { id: "dojo_first_lesson", title: "First bow", description: "Complete your first dojo lesson.", icon: "🥋", category: "dojo", kind: "dojo_lessons_completed", goal: 1 },
+  { id: "dojo_3_lessons", title: "Three steps in", description: "Complete 3 dojo lessons.", icon: "🥋", category: "dojo", kind: "dojo_lessons_completed", goal: 3 },
+  { id: "dojo_6_lessons", title: "Halfway through Genki I", description: "Complete 6 dojo lessons.", icon: "📘", category: "dojo", kind: "dojo_lessons_completed", goal: 6 },
+  { id: "dojo_12_lessons", title: "Genki I complete", description: "Complete all 12 N5 dojo lessons.", icon: "⛩️", category: "dojo", kind: "dojo_lessons_completed", goal: 12 },
+];
+
 const COINS: AchievementDef[] = [
   { id: "coins_50", title: "First coins", description: "Earn 50 coins.", icon: "🪙", category: "rewards", kind: "coins_earned", goal: 50 },
   { id: "coins_100", title: "Pocket change", description: "Earn 100 coins.", icon: "🪙", category: "rewards", kind: "coins_earned", goal: 100 },
@@ -240,6 +255,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   ...KANA_MASTERED,
   ...KANJI_MASTERED,
   ...VOCAB_MASTERED,
+  ...DOJO_LESSONS,
   ...COINS,
   ...N5_GRAND,
 ];
@@ -275,6 +291,8 @@ export type AchievementCounters = {
   kanaMastered: number;
   kanjiMastered: number;
   vocabMastered: number;
+  // Number of fully-completed Dojo lessons (all 3 sections passed).
+  dojoLessonsCompleted: number;
   // 0..100 — scaled progress toward the N5 grand achievement so the
   // progress bar fills continuously as the user closes the gap.
   n5Grand: number;
@@ -294,6 +312,7 @@ async function computeCounters(userId: string): Promise<AchievementCounters> {
     kanjiSeenRows,
     meaningToKanjiRows,
     masteredByType,
+    dojoLessonsCompleted,
   ] = await Promise.all([
     getStreak(userId),
     prisma.quizAttempt.count({ where: { userId } }),
@@ -343,6 +362,8 @@ async function computeCounters(userId: string): Promise<AchievementCounters> {
       where: { userId, level: { gte: MAX_SRS_LEVEL } },
       _count: { _all: true },
     }),
+    // Dojo lessons fully completed (every section passed).
+    getCompletedLessonsCount(userId),
   ]);
 
   const perfectQuizzes = perfectCandidates.filter(
@@ -387,6 +408,7 @@ async function computeCounters(userId: string): Promise<AchievementCounters> {
     kanaMastered,
     kanjiMastered,
     vocabMastered,
+    dojoLessonsCompleted,
     n5Grand,
   };
 }
@@ -420,6 +442,8 @@ function counterFor(
       return counters.kanjiMastered;
     case "vocab_mastered":
       return counters.vocabMastered;
+    case "dojo_lessons_completed":
+      return counters.dojoLessonsCompleted;
     case "n5_grand":
       return counters.n5Grand;
   }

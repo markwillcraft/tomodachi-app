@@ -215,6 +215,38 @@ model Achievement {
   @@index([userId])
 }
 
+// Per-user, per-lesson, per-section completion state for the Dojo
+// (guided curriculum). Each lesson has three sections — grammar,
+// vocab, listening — and each gets one row per user. We track the
+// user's best score (0–100) and total attempts. A section "passes"
+// once the user scores >= DOJO_PASS_THRESHOLD on a single attempt;
+// `passedAt` is stamped at that moment and never cleared on retakes.
+//
+// Retakes are always allowed; they update `bestScorePct` if higher
+// and bump `attempts` regardless. A lesson is "completed" when all
+// three of its sections have a non-null `passedAt` (computed in
+// src/lib/dojo-server.ts, not stored).
+//
+// Lesson identifiers match `id` in src/lib/dojo.ts (e.g. "n5-l1").
+model DojoProgress {
+  id           Int       @id @default(autoincrement())
+  userId       String
+  lessonId     String
+  // "grammar" | "vocab" | "listening"
+  section      String
+  // 0–100, integer percentage of the best attempt so far.
+  bestScorePct Int       @default(0)
+  attempts     Int       @default(0)
+  // Timestamp of the first passing attempt; null until passed.
+  passedAt     DateTime?
+  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime  @default(now())
+
+  @@unique([userId, lessonId, section])
+  @@index([userId, lessonId])
+  @@index([userId, passedAt])
+}
+
 // Append-only ledger of every coin grant (and, eventually, spend). The
 // dedupKey is the deduplication contract: e.g. "quiz:<attemptId>" awards
 // quiz coins exactly once even if /api/quiz/submit is retried, and

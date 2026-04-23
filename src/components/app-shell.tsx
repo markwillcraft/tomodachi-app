@@ -9,6 +9,7 @@ import {
   BookOpen,
   Brush,
   Coins,
+  Compass,
   GraduationCap,
   Keyboard,
   Languages,
@@ -68,10 +69,11 @@ type NavGroup = {
 // ---------- nav config ----------
 //
 // Track first (where the user lands and reflects), Learn second (the daily
-// loop with sub-routes). Study exposes every study surface as a quick-jump
-// child so the user can hop straight into kana / vocab / grammar / kanji /
-// muscle memory without going through the hub. "Browse Categories" sits
-// first because it's the gateway for populating the vocab library.
+// loop with sub-routes). Inside Learn, Dojo (the *guided* curriculum) is
+// listed above Self-study (the *free-roam* drills) — sensei first, then
+// the practice room. Self-study still exposes every study surface as a
+// quick-jump child so power users can hop straight into kana / vocab /
+// grammar / kanji / muscle memory.
 
 const NAV_GROUPS: NavGroup[] = [
   {
@@ -88,8 +90,24 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Learn",
     items: [
       {
+        // Guided Genki-based curriculum. Lives at /dojo so the
+        // route name matches the in-app brand ("Dachi-sensei's
+        // dojo"). Sub-routes for individual lessons land here in
+        // Phase 2 (e.g. /dojo/n5/lesson-1).
+        href: "/dojo",
+        label: "Dojo",
+        icon: Compass,
+        children: [
+          { href: "/dojo?level=n5", label: "JLPT N5 Path", icon: Sparkles },
+          { href: "/dojo?level=n4", label: "JLPT N4 Path", icon: Trophy },
+        ],
+      },
+      {
+        // Free-roam practice room. Renamed from "Study" so the
+        // distinction with the Dojo is unambiguous: same surfaces
+        // underneath, no curriculum on top.
         href: "/study",
-        label: "Study",
+        label: "Self-study",
         icon: BookOpen,
         children: [
           { href: "/categories", label: "Browse Categories", icon: Layers },
@@ -138,9 +156,9 @@ const COLLAPSED_KEY = "tomodachi_sidebar_collapsed"
 
 // Routes that opt into the wider main-canvas (max-w-7xl). Visual
 // surfaces with a lot of horizontal layout (shop shelf, equipped
-// preview grid) need the extra room; everything else reads better at
-// the narrower default width.
-const WIDE_ROUTE_PREFIXES = ["/shop", "/inventory"]
+// preview grid, dojo lesson grid) need the extra room; everything
+// else reads better at the narrower default width.
+const WIDE_ROUTE_PREFIXES = ["/shop", "/inventory", "/dojo"]
 function isWideRoute(pathname: string): boolean {
   return WIDE_ROUTE_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(p + "/"),
