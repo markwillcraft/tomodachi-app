@@ -41,6 +41,7 @@ import { cn } from "@/lib/utils"
 import { speakJapanese } from "@/lib/speech"
 import type { DojoSectionKind } from "@/lib/dojo"
 import type {
+  GrammarKeyKanji,
   GrammarPoint,
   ListeningPrompt,
   VocabItem,
@@ -62,6 +63,10 @@ export type LessonViewProps = {
   lessonHref: string
   intro: string
   grammar: readonly GrammarPoint[]
+  /** Reading-aid kanji surfaced under the grammar stepper so users
+   *  recognise the kanji words that appear in drill prompts. Empty
+   *  array hides the panel — never null. */
+  grammarKeyKanji: readonly GrammarKeyKanji[]
   vocab: readonly VocabItem[]
   listening: readonly ListeningPrompt[]
   /** True when this section is already passed — lets the user skip
@@ -84,6 +89,7 @@ export function LessonView(props: LessonViewProps) {
     lessonHref,
     intro,
     grammar,
+    grammarKeyKanji,
     vocab,
     listening,
     alreadyPassed,
@@ -174,10 +180,15 @@ export function LessonView(props: LessonViewProps) {
 
       {/* Section body */}
       {section === "grammar" && (
-        <GrammarLesson
-          points={grammar}
-          onSeenCountChange={setGrammarSeenCount}
-        />
+        <>
+          <GrammarLesson
+            points={grammar}
+            onSeenCountChange={setGrammarSeenCount}
+          />
+          {grammarKeyKanji.length > 0 && (
+            <KeyKanjiPanel items={grammarKeyKanji} />
+          )}
+        </>
       )}
       {section === "vocab" && (
         <VocabFlashcards
@@ -567,6 +578,11 @@ function GrammarLesson({
   const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set())
   const total = points.length
 
+  // Mark the current point as seen. The updater stays *pure* — calling
+  // the parent's `onSeenCountChange` here would trip React 19's
+  // "setState during render" guard because state updater functions can
+  // be invoked twice during reconciliation. Bubble the count to the
+  // parent from the dedicated effect below instead.
   useEffect(() => {
     const point = points[index]
     if (!point) return
@@ -574,10 +590,13 @@ function GrammarLesson({
       if (prev.has(point.id)) return prev
       const next = new Set(prev)
       next.add(point.id)
-      onSeenCountChange(next.size)
       return next
     })
-  }, [index, points, onSeenCountChange])
+  }, [index, points])
+
+  useEffect(() => {
+    onSeenCountChange(seen.size)
+  }, [seen, onSeenCountChange])
 
   const goPrev = () => setIndex((i) => Math.max(0, i - 1))
   const goNext = () => setIndex((i) => Math.min(total - 1, i + 1))
@@ -726,6 +745,94 @@ function GrammarLesson({
 }
 
 // ---------------------------------------------------------------------
+// Key kanji panel — reading aid before grammar drills
+// ---------------------------------------------------------------------
+// Drill prompts are written in natural Japanese with kanji that often
+// haven't been formally introduced in the lesson's vocab section
+// (e.g. 先生 / 召し上がる show up in N4-L19's grammar drills even
+// though they aren't in that lesson's vocab list). This panel sits
+// between the grammar stepper and the "Start drill" CTA to give the
+// user a single place to recognise those words first — so the drill
+// itself is a grammar test, not a reading test.
+
+function KeyKanjiPanel({
+  items,
+}: {
+  items: readonly GrammarKeyKanji[]
+}) {
+  return (
+    <section
+      aria-labelledby="key-kanji-heading"
+      className={cn(
+        "relative overflow-hidden rounded-2xl border border-violet-500/25",
+        "bg-gradient-to-br from-violet-500/[0.10] via-card to-card",
+      )}
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-16 -top-16 size-40 rounded-full bg-violet-400/20 blur-3xl"
+      />
+      <div className="relative flex flex-col gap-3 p-4 sm:p-5">
+        <header className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-violet-500/15 ring-1 ring-inset ring-violet-500/30">
+              <Languages
+                className="size-4 text-violet-600 dark:text-violet-300"
+                strokeWidth={2.25}
+              />
+            </span>
+            <div>
+              <h2
+                id="key-kanji-heading"
+                className="text-sm font-bold tracking-tight"
+              >
+                Key kanji for the drill
+              </h2>
+              <p className="text-[11px] text-muted-foreground">
+                Skim these so the drill is a grammar test, not a reading
+                one.
+              </p>
+            </div>
+          </div>
+          <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-700 ring-1 ring-inset ring-violet-500/20 dark:text-violet-300">
+            {items.length} word{items.length === 1 ? "" : "s"}
+          </span>
+        </header>
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {items.map((it) => (
+            <li
+              key={it.kanji}
+              className="flex items-baseline gap-2.5 rounded-lg border bg-card/80 px-3 py-2"
+            >
+              <button
+                type="button"
+                onClick={() => speakJapanese(it.kanji)}
+                className="group/play inline-flex shrink-0 items-baseline gap-1 rounded-md px-1 py-0.5 text-base font-bold leading-tight text-foreground transition-colors hover:bg-violet-500/10"
+                aria-label={`Play audio for ${it.kanji}`}
+                title="Play audio"
+              >
+                <span>{it.kanji}</span>
+                <Volume2
+                  className="size-3 text-muted-foreground transition-colors group-hover/play:text-violet-600"
+                  strokeWidth={2.5}
+                  aria-hidden
+                />
+              </button>
+              <span className="font-japanese text-xs text-muted-foreground">
+                {it.reading}
+              </span>
+              <span className="ml-auto text-right text-xs leading-snug text-foreground/80">
+                {it.gloss}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------
 // Vocab flashcards
 // ---------------------------------------------------------------------
 
@@ -744,6 +851,9 @@ function VocabFlashcards({
   // forced into a flip animation just to satisfy the gate.
   const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set())
 
+  // Same rule as GrammarLesson: keep the updater pure so React 19's
+  // strict reconciliation doesn't re-run side effects, and notify the
+  // parent from a dedicated effect that watches the seen set.
   useEffect(() => {
     const item = items[index]
     if (!item) return
@@ -752,10 +862,13 @@ function VocabFlashcards({
       if (prev.has(item.id)) return prev
       const next = new Set(prev)
       next.add(item.id)
-      onSeenCountChange(next.size)
       return next
     })
-  }, [index, items, onSeenCountChange])
+  }, [index, items])
+
+  useEffect(() => {
+    onSeenCountChange(seen.size)
+  }, [seen, onSeenCountChange])
 
   const goPrev = () => setIndex((i) => Math.max(0, i - 1))
   const goNext = () => setIndex((i) => Math.min(items.length - 1, i + 1))

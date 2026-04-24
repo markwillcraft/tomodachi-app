@@ -103,6 +103,7 @@ export default async function DojoSectionLessonPage({
         lessonHref={lessonHref}
         intro={content.intro}
         grammar={content.grammar}
+        grammarKeyKanji={content.grammarKeyKanji ?? []}
         vocab={content.vocab}
         listening={content.listening}
         alreadyPassed={!!sectionProgress?.passedAt}

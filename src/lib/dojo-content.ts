@@ -83,11 +83,35 @@ export type ListeningPrompt = {
   question: DrillQuestion
 }
 
+/** Reading-aid entry surfaced on the grammar lesson view *before*
+ *  the user starts the drill. Drill prompts are written in natural
+ *  Japanese and frequently contain kanji that haven't been formally
+ *  introduced (e.g. 先生, 待つ, 召し上がる appear in N4 lesson 19's
+ *  grammar drills even though most of them aren't in that lesson's
+ *  vocab section). The "Key kanji" panel walks the user through
+ *  these words once so the drill itself is a grammar test, not a
+ *  reading test. Author one entry per kanji compound that the user
+ *  will actually meet in the drill. */
+export type GrammarKeyKanji = {
+  /** The kanji form as it appears in drill prompts (e.g. "先生"). */
+  kanji: string
+  /** Hiragana reading (e.g. "せんせい"). */
+  reading: string
+  /** Two-to-five word English gloss. */
+  gloss: string
+}
+
 export type LessonContent = {
   lessonId: string
   /** Short blurb shown above the grammar section in the lesson detail. */
   intro: string
   grammar: readonly GrammarPoint[]
+  /** Optional vocab primer shown above the grammar drill CTA. Lessons
+   *  that don't ship one fall back to relying on the lesson's `vocab`
+   *  list — but every lesson should have at least a small list because
+   *  drill prompts almost always pull in kanji that aren't in the
+   *  vocab section. See [docs] in `src/lib/dojo.ts`. */
+  grammarKeyKanji?: readonly GrammarKeyKanji[]
   vocab: readonly VocabItem[]
   listening: readonly ListeningPrompt[]
 }
@@ -274,6 +298,14 @@ const N5_L1: LessonContent = {
         },
       ],
     },
+  ],
+  grammarKeyKanji: [
+    { kanji: "田中", reading: "たなか", gloss: "Tanaka (placeholder name)" },
+    { kanji: "日本", reading: "にほん", gloss: "Japan" },
+    { kanji: "日本語", reading: "にほんご", gloss: "Japanese language" },
+    { kanji: "本", reading: "ほん", gloss: "book" },
+    { kanji: "二十歳", reading: "はたち", gloss: "20 years old (special reading)" },
+    { kanji: "一歳", reading: "いっさい", gloss: "1 year old" },
   ],
   vocab: [
     { id: "n5-l1-v1", kana: "わたし", kanji: "私", romaji: "watashi", english: "I, me", partOfSpeech: "pronoun" },
@@ -561,6 +593,17 @@ const N5_L2: LessonContent = {
         },
       ],
     },
+  ],
+  grammarKeyKanji: [
+    { kanji: "私", reading: "わたし", gloss: "I, me" },
+    { kanji: "誰", reading: "だれ", gloss: "who" },
+    { kanji: "何", reading: "なに / なん", gloss: "what" },
+    { kanji: "人", reading: "ひと", gloss: "person" },
+    { kanji: "喫茶店", reading: "きっさてん", gloss: "café" },
+    { kanji: "百", reading: "ひゃく", gloss: "hundred (100)" },
+    { kanji: "千", reading: "せん", gloss: "thousand (1,000)" },
+    { kanji: "万", reading: "まん", gloss: "ten thousand (10,000)" },
+    { kanji: "三百", reading: "さんびゃく", gloss: "three hundred (300)" },
   ],
   vocab: [
     { id: "n5-l2-v1", kana: "ペン", romaji: "pen", english: "pen", partOfSpeech: "noun" },
@@ -868,6 +911,14 @@ const N5_L3: LessonContent = {
       ],
     },
   ],
+  grammarKeyKanji: [
+    { kanji: "肉", reading: "にく", gloss: "meat" },
+    { kanji: "勉強", reading: "べんきょう", gloss: "study" },
+    { kanji: "映画", reading: "えいが", gloss: "movie" },
+    { kanji: "七時", reading: "しちじ", gloss: "7 o'clock" },
+    { kanji: "三時", reading: "さんじ", gloss: "3 o'clock" },
+    { kanji: "日曜日", reading: "にちようび", gloss: "Sunday" },
+  ],
   vocab: [
     { id: "n5-l3-v1", kana: "のむ", kanji: "飲む", romaji: "nomu", english: "to drink", partOfSpeech: "verb" },
     { id: "n5-l3-v2", kana: "たべる", kanji: "食べる", romaji: "taberu", english: "to eat", partOfSpeech: "verb" },
@@ -1132,6 +1183,15 @@ const N5_L4: LessonContent = {
       ],
     },
   ],
+  grammarKeyKanji: [
+    { kanji: "今朝", reading: "けさ", gloss: "this morning" },
+    { kanji: "月曜日", reading: "げつようび", gloss: "Monday" },
+    { kanji: "三月", reading: "さんがつ", gloss: "March" },
+    { kanji: "六時", reading: "ろくじ", gloss: "6 o'clock" },
+    { kanji: "中", reading: "なか", gloss: "inside, middle" },
+    { kanji: "外", reading: "そと", gloss: "outside" },
+    { kanji: "横", reading: "よこ", gloss: "next to, side" },
+  ],
   vocab: [
     { id: "n5-l4-v1", kana: "きのう", kanji: "昨日", romaji: "kinou", english: "yesterday", partOfSpeech: "noun" },
     { id: "n5-l4-v2", kana: "きょう", kanji: "今日", romaji: "kyou", english: "today", partOfSpeech: "noun" },
@@ -1382,6 +1442,12 @@ const N5_L5: LessonContent = {
         },
       ],
     },
+  ],
+  grammarKeyKanji: [
+    { kanji: "京都", reading: "きょうと", gloss: "Kyoto" },
+    { kanji: "町", reading: "まち", gloss: "town" },
+    { kanji: "映画", reading: "えいが", gloss: "movie" },
+    { kanji: "本", reading: "ほん", gloss: "book" },
   ],
   vocab: [
     { id: "n5-l5-v1", kana: "たかい", kanji: "高い", romaji: "takai", english: "expensive, high", partOfSpeech: "adjective" },
@@ -1644,6 +1710,12 @@ const N5_L6: LessonContent = {
       ],
     },
   ],
+  grammarKeyKanji: [
+    { kanji: "朝", reading: "あさ", gloss: "morning" },
+    { kanji: "晩", reading: "ばん", gloss: "evening, night" },
+    { kanji: "ご飯", reading: "ごはん", gloss: "meal, cooked rice" },
+    { kanji: "一度", reading: "いちど", gloss: "once, one time" },
+  ],
   vocab: [
     { id: "n5-l6-v1", kana: "おきる", kanji: "起きる", romaji: "okiru", english: "to get up", partOfSpeech: "verb" },
     { id: "n5-l6-v2", kana: "ねる", kanji: "寝る", romaji: "neru", english: "to sleep, to go to bed", partOfSpeech: "verb" },
@@ -1891,6 +1963,14 @@ const N5_L7: LessonContent = {
       ],
     },
   ],
+  grammarKeyKanji: [
+    { kanji: "山田", reading: "やまだ", gloss: "Yamada (placeholder name)" },
+    { kanji: "東京", reading: "とうきょう", gloss: "Tokyo" },
+    { kanji: "雨", reading: "あめ", gloss: "rain" },
+    { kanji: "降る", reading: "ふる", gloss: "to fall (rain, snow)" },
+    { kanji: "持つ", reading: "もつ", gloss: "to hold, to have" },
+    { kanji: "大きい", reading: "おおきい", gloss: "big" },
+  ],
   vocab: [
     { id: "n5-l7-v1", kana: "かぞく", kanji: "家族", romaji: "kazoku", english: "family", partOfSpeech: "noun" },
     { id: "n5-l7-v2", kana: "ちち", kanji: "父", romaji: "chichi", english: "(my) father", partOfSpeech: "noun" },
@@ -2127,6 +2207,13 @@ const N5_L8: LessonContent = {
         },
       ],
     },
+  ],
+  grammarKeyKanji: [
+    { kanji: "学生", reading: "がくせい", gloss: "student" },
+    { kanji: "明日", reading: "あした", gloss: "tomorrow" },
+    { kanji: "寒い", reading: "さむい", gloss: "cold (weather)" },
+    { kanji: "静か", reading: "しずか", gloss: "quiet" },
+    { kanji: "高い", reading: "たかい", gloss: "expensive, tall" },
   ],
   vocab: [
     { id: "n5-l8-v1", kana: "にく", kanji: "肉", romaji: "niku", english: "meat", partOfSpeech: "noun" },
@@ -2374,6 +2461,14 @@ const N5_L9: LessonContent = {
         },
       ],
     },
+  ],
+  grammarKeyKanji: [
+    { kanji: "医者", reading: "いしゃ", gloss: "doctor" },
+    { kanji: "山田", reading: "やまだ", gloss: "Yamada (placeholder name)" },
+    { kanji: "彼", reading: "かれ", gloss: "he, him, boyfriend" },
+    { kanji: "思う", reading: "おもう", gloss: "to think" },
+    { kanji: "言う", reading: "いう", gloss: "to say" },
+    { kanji: "大きい", reading: "おおきい", gloss: "big" },
   ],
   vocab: [
     { id: "n5-l9-v1", kana: "むかし", kanji: "昔", romaji: "mukashi", english: "long ago", partOfSpeech: "noun" },
@@ -2629,6 +2724,15 @@ const N5_L10: LessonContent = {
       ],
     },
   ],
+  grammarKeyKanji: [
+    { kanji: "一番", reading: "いちばん", gloss: "the most, #1" },
+    { kanji: "大阪", reading: "おおさか", gloss: "Osaka" },
+    { kanji: "東京", reading: "とうきょう", gloss: "Tokyo" },
+    { kanji: "背", reading: "せ", gloss: "height (of a person)" },
+    { kanji: "好き", reading: "すき", gloss: "to like, favourite" },
+    { kanji: "来年", reading: "らいねん", gloss: "next year" },
+    { kanji: "医者", reading: "いしゃ", gloss: "doctor" },
+  ],
   vocab: [
     { id: "n5-l10-v1", kana: "なつやすみ", kanji: "夏休み", romaji: "natsu-yasumi", english: "summer vacation", partOfSpeech: "noun" },
     { id: "n5-l10-v2", kana: "ふゆやすみ", kanji: "冬休み", romaji: "fuyu-yasumi", english: "winter vacation", partOfSpeech: "noun" },
@@ -2874,6 +2978,11 @@ const N5_L11: LessonContent = {
         },
       ],
     },
+  ],
+  grammarKeyKanji: [
+    { kanji: "日本", reading: "にほん", gloss: "Japan" },
+    { kanji: "映画", reading: "えいが", gloss: "movie" },
+    { kanji: "週末", reading: "しゅうまつ", gloss: "weekend" },
   ],
   vocab: [
     { id: "n5-l11-v1", kana: "すし", kanji: "寿司", romaji: "sushi", english: "sushi", partOfSpeech: "noun" },
@@ -3129,6 +3238,13 @@ const N5_L12: LessonContent = {
         },
       ],
     },
+  ],
+  grammarKeyKanji: [
+    { kanji: "電車", reading: "でんしゃ", gloss: "train" },
+    { kanji: "乗る", reading: "のる", gloss: "to ride, to board" },
+    { kanji: "早い", reading: "はやい", gloss: "early, fast" },
+    { kanji: "明日", reading: "あした", gloss: "tomorrow" },
+    { kanji: "高い", reading: "たかい", gloss: "expensive, high" },
   ],
   vocab: [
     { id: "n5-l12-v1", kana: "びょうき", kanji: "病気", romaji: "byouki", english: "illness", partOfSpeech: "noun" },
@@ -3403,6 +3519,19 @@ const N4_L13: LessonContent = {
       ],
     },
   ],
+  grammarKeyKanji: [
+    { kanji: "学校", reading: "がっこう", gloss: "school" },
+    { kanji: "日本語", reading: "にほんご", gloss: "Japanese language" },
+    { kanji: "映画", reading: "えいが", gloss: "movie" },
+    { kanji: "言葉", reading: "ことば", gloss: "word, language" },
+    { kanji: "車", reading: "くるま", gloss: "car" },
+    { kanji: "音", reading: "おと", gloss: "sound" },
+    { kanji: "金", reading: "かね / おかね", gloss: "money" },
+    { kanji: "今晩", reading: "こんばん", gloss: "tonight" },
+    { kanji: "五百", reading: "ごひゃく", gloss: "five hundred (500)" },
+    { kanji: "使う", reading: "つかう", gloss: "to use" },
+    { kanji: "少し", reading: "すこし", gloss: "a little, a bit" },
+  ],
   vocab: [
     { id: "n4-l13-v1", kana: "アルバイト", romaji: "arubaito", english: "part-time job", partOfSpeech: "noun" },
     { id: "n4-l13-v2", kana: "しごと", kanji: "仕事", romaji: "shigoto", english: "work, job", partOfSpeech: "noun" },
@@ -3672,6 +3801,19 @@ const N4_L14: LessonContent = {
       ],
     },
   ],
+  grammarKeyKanji: [
+    { kanji: "先生", reading: "せんせい", gloss: "teacher" },
+    { kanji: "友達", reading: "ともだち", gloss: "friend" },
+    { kanji: "学生", reading: "がくせい", gloss: "student" },
+    { kanji: "母", reading: "はは", gloss: "(my) mother" },
+    { kanji: "勉強", reading: "べんきょう", gloss: "study" },
+    { kanji: "電話", reading: "でんわ", gloss: "phone, phone call" },
+    { kanji: "時計", reading: "とけい", gloss: "watch, clock" },
+    { kanji: "暇", reading: "ひま", gloss: "free time, not busy" },
+    { kanji: "昼", reading: "ひる", gloss: "noon, daytime" },
+    { kanji: "着る", reading: "きる", gloss: "to wear (clothes)" },
+    { kanji: "説明", reading: "せつめい", gloss: "explanation" },
+  ],
   vocab: [
     { id: "n4-l14-v1", kana: "バレンタインデー", romaji: "barentain dee", english: "Valentine's Day", partOfSpeech: "noun" },
     { id: "n4-l14-v2", kana: "チョコレート", romaji: "chokoreeto", english: "chocolate", partOfSpeech: "noun" },
@@ -3919,6 +4061,16 @@ const N4_L15: LessonContent = {
         },
       ],
     },
+  ],
+  grammarKeyKanji: [
+    { kanji: "今夜", reading: "こんや", gloss: "tonight" },
+    { kanji: "明日", reading: "あした", gloss: "tomorrow" },
+    { kanji: "勉強", reading: "べんきょう", gloss: "study" },
+    { kanji: "分かる", reading: "わかる", gloss: "to understand" },
+    { kanji: "思う", reading: "おもう", gloss: "to think" },
+    { kanji: "新しい", reading: "あたらしい", gloss: "new" },
+    { kanji: "暑い", reading: "あつい", gloss: "hot (weather)" },
+    { kanji: "安い", reading: "やすい", gloss: "cheap" },
   ],
   vocab: [
     { id: "n4-l15-v1", kana: "サークル", romaji: "saakuru", english: "(student) club, circle", partOfSpeech: "noun" },
@@ -4177,6 +4329,18 @@ const N4_L16: LessonContent = {
         },
       ],
     },
+  ],
+  grammarKeyKanji: [
+    { kanji: "全部", reading: "ぜんぶ", gloss: "all, everything" },
+    { kanji: "宿題", reading: "しゅくだい", gloss: "homework" },
+    { kanji: "時間", reading: "じかん", gloss: "time" },
+    { kanji: "春", reading: "はる", gloss: "spring (season)" },
+    { kanji: "桜", reading: "さくら", gloss: "cherry blossom" },
+    { kanji: "皿", reading: "さら", gloss: "dish, plate" },
+    { kanji: "咲く", reading: "さく", gloss: "to bloom" },
+    { kanji: "押す", reading: "おす", gloss: "to push" },
+    { kanji: "洗う", reading: "あらう", gloss: "to wash" },
+    { kanji: "開く", reading: "あく / ひらく", gloss: "to open" },
   ],
   vocab: [
     { id: "n4-l16-v1", kana: "わすれもの", kanji: "忘れ物", romaji: "wasuremono", english: "lost / forgotten item", partOfSpeech: "noun" },
@@ -4451,6 +4615,22 @@ const N4_L17: LessonContent = {
       ],
     },
   ],
+  grammarKeyKanji: [
+    { kanji: "先生", reading: "せんせい", gloss: "teacher" },
+    { kanji: "医者", reading: "いしゃ", gloss: "doctor" },
+    { kanji: "学生", reading: "がくせい", gloss: "student" },
+    { kanji: "友達", reading: "ともだち", gloss: "friend" },
+    { kanji: "彼女", reading: "かのじょ", gloss: "she, girlfriend" },
+    { kanji: "母", reading: "はは", gloss: "(my) mother" },
+    { kanji: "男", reading: "おとこ", gloss: "man, male" },
+    { kanji: "田中", reading: "たなか", gloss: "Tanaka (placeholder name)" },
+    { kanji: "雨", reading: "あめ", gloss: "rain" },
+    { kanji: "降る", reading: "ふる", gloss: "to fall (rain, snow)" },
+    { kanji: "作る", reading: "つくる", gloss: "to make" },
+    { kanji: "答え", reading: "こたえ", gloss: "answer" },
+    { kanji: "美味しい", reading: "おいしい", gloss: "delicious" },
+    { kanji: "間違う", reading: "まちがう", gloss: "to be wrong, to make a mistake" },
+  ],
   vocab: [
     { id: "n4-l17-v1", kana: "ぐち", kanji: "愚痴", romaji: "guchi", english: "complaint, grumble", partOfSpeech: "noun" },
     { id: "n4-l17-v2", kana: "おねがい", kanji: "お願い", romaji: "onegai", english: "request, favour", partOfSpeech: "noun" },
@@ -4701,6 +4881,18 @@ const N4_L18: LessonContent = {
       ],
     },
   ],
+  grammarKeyKanji: [
+    { kanji: "勉強", reading: "べんきょう", gloss: "study" },
+    { kanji: "名前", reading: "なまえ", gloss: "name" },
+    { kanji: "雨", reading: "あめ", gloss: "rain" },
+    { kanji: "寝る", reading: "ねる", gloss: "to sleep, to go to bed" },
+    { kanji: "歌う", reading: "うたう", gloss: "to sing" },
+    { kanji: "歩く", reading: "あるく", gloss: "to walk" },
+    { kanji: "聞く", reading: "きく", gloss: "to listen, to ask" },
+    { kanji: "走る", reading: "はしる", gloss: "to run" },
+    { kanji: "良い", reading: "いい / よい", gloss: "good" },
+    { kanji: "降る", reading: "ふる", gloss: "to fall (rain, snow)" },
+  ],
   vocab: [
     { id: "n4-l18-v1", kana: "にっき", kanji: "日記", romaji: "nikki", english: "diary", partOfSpeech: "noun" },
     { id: "n4-l18-v2", kana: "あく", kanji: "開く", romaji: "aku", english: "to open (intr.)", partOfSpeech: "verb" },
@@ -4949,6 +5141,17 @@ const N4_L19: LessonContent = {
       ],
     },
   ],
+  grammarKeyKanji: [
+    { kanji: "先生", reading: "せんせい", gloss: "teacher" },
+    { kanji: "田中", reading: "たなか", gloss: "Tanaka (placeholder name)" },
+    { kanji: "少々", reading: "しょうしょう", gloss: "(just) a moment, a little" },
+    { kanji: "待つ", reading: "まつ", gloss: "to wait" },
+    { kanji: "帰る", reading: "かえる", gloss: "to go home, to return" },
+    { kanji: "教える", reading: "おしえる", gloss: "to teach, to tell" },
+    { kanji: "知る", reading: "しる", gloss: "to know" },
+    { kanji: "参る", reading: "まいる", gloss: "(humble) to go / come" },
+    { kanji: "申す", reading: "もうす", gloss: "(humble) to say, to be called" },
+  ],
   vocab: [
     { id: "n4-l19-v1", kana: "じょうし", kanji: "上司", romaji: "joushi", english: "boss, superior", partOfSpeech: "noun" },
     { id: "n4-l19-v2", kana: "しゃちょう", kanji: "社長", romaji: "shachou", english: "company president", partOfSpeech: "noun" },
@@ -5185,6 +5388,17 @@ const N4_L20: LessonContent = {
         },
       ],
     },
+  ],
+  grammarKeyKanji: [
+    { kanji: "先生", reading: "せんせい", gloss: "teacher" },
+    { kanji: "少々", reading: "しょうしょう", gloss: "(just) a moment, a little" },
+    { kanji: "質問", reading: "しつもん", gloss: "question" },
+    { kanji: "会う", reading: "あう", gloss: "to meet" },
+    { kanji: "待つ", reading: "まつ", gloss: "to wait" },
+    { kanji: "持つ", reading: "もつ", gloss: "to hold, to have" },
+    { kanji: "教える", reading: "おしえる", gloss: "to teach, to tell" },
+    { kanji: "送る", reading: "おくる", gloss: "to send" },
+    { kanji: "召し上がる", reading: "めしあがる", gloss: "(honorific) to eat / drink" },
   ],
   vocab: [
     { id: "n4-l20-v1", kana: "けんじょうご", kanji: "謙譲語", romaji: "kenjougo", english: "humble language", partOfSpeech: "noun" },
@@ -5438,6 +5652,22 @@ const N4_L21: LessonContent = {
         },
       ],
     },
+  ],
+  grammarKeyKanji: [
+    { kanji: "学生", reading: "がくせい", gloss: "student" },
+    { kanji: "弟", reading: "おとうと", gloss: "younger brother" },
+    { kanji: "犬", reading: "いぬ", gloss: "dog" },
+    { kanji: "頭", reading: "あたま", gloss: "head" },
+    { kanji: "金", reading: "かね / おかね", gloss: "money" },
+    { kanji: "漢字", reading: "かんじ", gloss: "kanji (Chinese character)" },
+    { kanji: "寿司", reading: "すし", gloss: "sushi" },
+    { kanji: "暇", reading: "ひま", gloss: "free time, not busy" },
+    { kanji: "痛い", reading: "いたい", gloss: "painful, hurts" },
+    { kanji: "休む", reading: "やすむ", gloss: "to rest, to take time off" },
+    { kanji: "入る", reading: "はいる", gloss: "to enter" },
+    { kanji: "座る", reading: "すわる", gloss: "to sit" },
+    { kanji: "払う", reading: "はらう", gloss: "to pay" },
+    { kanji: "分かる", reading: "わかる", gloss: "to understand" },
   ],
   vocab: [
     { id: "n4-l21-v1", kana: "かんこくじん", kanji: "韓国人", romaji: "kankokujin", english: "Korean person", partOfSpeech: "noun" },
@@ -5702,6 +5932,17 @@ const N4_L22: LessonContent = {
       ],
     },
   ],
+  grammarKeyKanji: [
+    { kanji: "先生", reading: "せんせい", gloss: "teacher" },
+    { kanji: "学生", reading: "がくせい", gloss: "student" },
+    { kanji: "日本語", reading: "にほんご", gloss: "Japanese language" },
+    { kanji: "漢字", reading: "かんじ", gloss: "kanji (Chinese character)" },
+    { kanji: "練習", reading: "れんしゅう", gloss: "practice" },
+    { kanji: "風邪", reading: "かぜ", gloss: "(a) cold, the flu" },
+    { kanji: "金", reading: "かね / おかね", gloss: "money" },
+    { kanji: "考える", reading: "かんがえる", gloss: "to think (about), to consider" },
+    { kanji: "休む", reading: "やすむ", gloss: "to rest, to take time off" },
+  ],
   vocab: [
     { id: "n4-l22-v1", kana: "ぶんか", kanji: "文化", romaji: "bunka", english: "culture", partOfSpeech: "noun" },
     { id: "n4-l22-v2", kana: "でんとう", kanji: "伝統", romaji: "dentou", english: "tradition", partOfSpeech: "noun" },
@@ -5955,6 +6196,20 @@ const N4_L23: LessonContent = {
         },
       ],
     },
+  ],
+  grammarKeyKanji: [
+    { kanji: "日本", reading: "にほん", gloss: "Japan" },
+    { kanji: "三年", reading: "さんねん", gloss: "three years" },
+    { kanji: "上手", reading: "じょうず", gloss: "skilful, good at" },
+    { kanji: "弟", reading: "おとうと", gloss: "younger brother" },
+    { kanji: "水", reading: "みず", gloss: "water" },
+    { kanji: "後", reading: "あと", gloss: "after, later" },
+    { kanji: "練習", reading: "れんしゅう", gloss: "practice" },
+    { kanji: "考える", reading: "かんがえる", gloss: "to think (about), to consider" },
+    { kanji: "出す", reading: "だす", gloss: "to take out, to submit" },
+    { kanji: "分かる", reading: "わかる", gloss: "to understand" },
+    { kanji: "安い", reading: "やすい", gloss: "cheap" },
+    { kanji: "静か", reading: "しずか", gloss: "quiet" },
   ],
   vocab: [
     { id: "n4-l23-v1", kana: "ふまん", kanji: "不満", romaji: "fuman", english: "dissatisfaction (na-adj)", partOfSpeech: "adjective" },
