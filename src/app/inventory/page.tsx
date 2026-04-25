@@ -28,16 +28,18 @@ import { InventoryBrowser } from "./inventory-browser"
 // an empty state pointing back to the Store.
 //
 // Layout (no-scroll target):
-//   ┌──────────────────────────────────────────────────┐
-//   │ Compact header (1 row)                           │
-//   ├──────────────┬───────────────────┬───────────────┤
-//   │ Slot 1 │ 2   │                   │ Slot 5 │ 6    │
-//   │ Slot 3 │ 4   │  Mascot preview   │ Slot 7 │ 8    │
-//   ├──────────────┴───────────────────┴───────────────┤
-//   │ Owned by category (horizontal tabs)              │
-//   └──────────────────────────────────────────────────┘
-// Everything is sized to fit inside a typical desktop viewport so
-// the user never has to scroll vertically on this page.
+//   ┌─────────────────────────────────────────────────────┐
+//   │ Compact header (1 row)                              │
+//   ├──────────────┬───────────────────┬──────────────────┤
+//   │ Slot  1 │  2 │                   │ Slot  7 │  8     │
+//   │ Slot  3 │  4 │  Mascot preview   │ Slot  9 │ 10     │
+//   │ Slot  5 │  6 │                   │ Slot 11 │ 12     │
+//   ├──────────────┴───────────────────┴──────────────────┤
+//   │ Owned by category (horizontal tabs)                 │
+//   └─────────────────────────────────────────────────────┘
+// Two 2×3 rails flank the mascot — same square tile shape as
+// before, just one extra row each. The rail height now lines up
+// with the preview square so the stage reads as balanced.
 //
 // Phase 2 (when buying ships): read `UserInventory` for owned items
 // and `EquippedCosmetic` for the slot map; replace the placeholder
@@ -160,8 +162,8 @@ function ClosetHeader({
 
         {/* ---- Twin progress meters (Equipped + Collection) ----
             Replaces the flat stat chip. Two parallel bars give the
-            user a sense of both short-term goal (fill 8 equip slots)
-            and long-term goal (collect all 70 cosmetics). */}
+            user a sense of both short-term goal (fill all 12 equip
+            slots) and long-term goal (collect every cosmetic). */}
         <div className="flex shrink-0 flex-col gap-1.5">
           <ProgressMeter
             label="Equipped"
@@ -306,14 +308,16 @@ function ProgressMeter({
 // =====================================================================
 // EquipStage
 // ---------------------------------------------------------------------
-// Paper-doll layout: mascot in the middle, 4 equip slots stacked
-// on each side. Reads like a classic RPG character sheet — the
-// user's eye lands on the Dachi first, then naturally scans
-// outward to "what can I put on it?".
+// Paper-doll layout: mascot in the middle, 6 equip slots stacked
+// on each side as a 2×3 grid. Reads like a classic RPG character
+// sheet — the user's eye lands on the Dachi first, then naturally
+// scans outward to "what can I put on it?".
 //
-// Slot ordering is intentional:
-//   Left column  — the outfit (head → top → bottom → shoes)
-//   Right column — the world  (pet, background, house, accessories)
+// Slot ordering is intentional and mirrors the order in
+// SHOP_CATEGORIES (top-down body, then held → world → scene):
+//   Left rail  — the outfit (head → face → neck → top → bottom → feet)
+//   Right rail — held + world (hand → back → pet → bg → house → accessory)
+// The slice indices below MUST stay aligned with that source order.
 // =====================================================================
 
 function EquipStage({
@@ -321,8 +325,9 @@ function EquipStage({
 }: {
   categories: readonly ShopCategory[]
 }) {
-  const left = categories.slice(0, 4)
-  const right = categories.slice(4, 8)
+  const half = Math.ceil(categories.length / 2)
+  const left = categories.slice(0, half)
+  const right = categories.slice(half)
   const filled = 0 // Phase 1 — nothing equipped yet.
   const total = categories.length
   const pct = Math.round((filled / total) * 100)
@@ -387,12 +392,13 @@ function EquipStage({
       </header>
 
       {/* ---- Paper-doll row ----
-          On large screens: 3-column grid with 2×2 side rails
-          (~260–300px wide) flanking a centered mascot column capped
-          at ~400px. Wider rails = bigger square tiles (~125–145px),
-          which read as proper "inventory cells" rather than icons.
-          On mobile: single column — slots collapse to a 4-up
-          horizontal grid above and below the mascot.
+          On large screens: 3-column grid with 2×3 side rails
+          (~300–340px wide) flanking a centered mascot column capped
+          at ~460px. Three rows of square tiles per rail line up
+          almost perfectly with the preview square so the stage
+          reads as balanced rather than top-heavy.
+          On mobile: single column — slots collapse to a 3-up
+          horizontal grid (2 rows of 3) above and below the mascot.
           `relative` so the row stacks above the decorative
           spotlight / dotted-texture / inner-ring layers above. */}
       <div
@@ -421,11 +427,13 @@ function SlotRail({
   return (
     <div
       className={cn(
-        // Mobile: 4-up horizontal grid so the rail isn't tall.
-        // Desktop: 2×2 grid — two columns of two square tiles each —
+        // Mobile: 3-up horizontal grid so 6 tiles wrap as 2 rows of
+        // 3 — keeps each tile readable on phones.
+        // Desktop: 2×3 grid — two columns of three square tiles —
         // so the rail's overall height tracks the mascot square
-        // instead of towering above it.
-        "grid grid-cols-4 gap-2 lg:grid-cols-2 lg:gap-2.5",
+        // (≈3 tiles tall ≈ preview square) instead of leaving an
+        // awkward gap.
+        "grid grid-cols-3 gap-2 lg:grid-cols-2 lg:gap-2.5",
       )}
       aria-label={`${side === "left" ? "Outfit" : "World"} slots`}
     >

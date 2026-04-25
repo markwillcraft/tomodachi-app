@@ -19,13 +19,30 @@ import type {
 import { subscribeRefresh } from "@/lib/notification-bus"
 import { Button } from "@/components/ui/button"
 
-const POLL_MS = 60_000
+// How long a fetch is considered "fresh enough" to skip on bell open.
+// Anything more aggressive defeats the point of the open-refresh
+// (user opens, sees stale state); anything less just burns a request
+// when the user is rapidly toggling the dropdown.
+const STALE_AFTER_MS = 30_000
 
-// Topbar bell + dropdown panel for in-app notifications. Polls
-// `/api/notifications` every 60s (and re-polls immediately on window
-// focus) so the unread badge stays roughly accurate without a realtime
-// channel. Click a row to mark it read and navigate; click "Mark all"
-// to clear the badge in one call.
+// Topbar bell + dropdown panel for in-app notifications. Fully
+// event-driven — there's no setInterval, no focus refetch, and no
+// visibilitychange refetch. The badge stays accurate via:
+//
+//   1. One fetch on mount (initial unread count for the badge).
+//   2. The notification bus: `apiFetch` auto-dispatches a refresh
+//      whenever any first-party API response carries a fresh
+//      notification, so completing a quiz / drill / lesson updates
+//      the bell in the same tick as the toast.
+//   3. A cross-tab BroadcastChannel signal: if the user has the app
+//      open in two tabs and tab A creates a notification, tab B's
+//      bell refreshes via the bus too.
+//   4. Opening the dropdown — guarantees the user sees fresh data
+//      whenever they look. Debounced by `STALE_AFTER_MS` so rapid
+//      open/close toggles don't generate redundant requests.
+//
+// Click a row to mark it read and navigate; click "Mark all" to clear
+// the badge in one call.
 export function NotificationBell() {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -34,9 +51,12 @@ export function NotificationBell() {
   const [error, setError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const containerRef = useRef<HTMLDivElement | null>(null)
+  // Tracks the last successful fetch so the open-refresh can skip
+  // when the cached data is still fresh.
+  const lastFetchedAtRef = useRef<number>(0)
 
-  // Centralise the fetch so initial load, focus refresh, polling, and
-  // post-mark refresh all share one path.
+  // Centralise the fetch so initial load, bus refresh, open refresh,
+  // and post-mark refresh all share one path.
   const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
       setError(null)
@@ -45,6 +65,7 @@ export function NotificationBell() {
         { signal },
       )
       setData(res)
+      lastFetchedAtRef.current = Date.now()
     } catch (e) {
       if ((e as { name?: string })?.name === "AbortError") return
       setError(apiErrorMessage(e, "Failed to load notifications"))
@@ -59,49 +80,25 @@ export function NotificationBell() {
   }, [refresh])
 
   // Bus-driven refresh: any time the toast pipeline announces a new
-  // notification, immediately re-pull so the unread badge and dropdown
-  // stay in sync without waiting for the next 60s poll.
+  // notification (in-tab via `apiFetch`, or cross-tab via the
+  // BroadcastChannel bridge in `notification-bus.ts`), immediately
+  // re-pull so the unread badge and dropdown stay in sync.
   useEffect(() => {
     return subscribeRefresh(() => {
       void refresh()
     })
   }, [refresh])
 
-  // Poll while mounted; pause when the tab is hidden so a backgrounded
-  // app doesn't burn the rate-limit bucket.
+  // Refresh on bell open — but only if the cached data is stale.
+  // This guarantees the user sees fresh state when they look without
+  // re-fetching on every dropdown toggle.
   useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | null = null
-    const start = () => {
-      if (timer) return
-      timer = setInterval(() => {
-        if (document.visibilityState === "visible") void refresh()
-      }, POLL_MS)
-    }
-    const stop = () => {
-      if (timer) {
-        clearInterval(timer)
-        timer = null
-      }
-    }
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void refresh()
-        start()
-      } else {
-        stop()
-      }
-    }
-    const onFocus = () => void refresh()
-
-    start()
-    window.addEventListener("focus", onFocus)
-    document.addEventListener("visibilitychange", onVisibility)
-    return () => {
-      stop()
-      window.removeEventListener("focus", onFocus)
-      document.removeEventListener("visibilitychange", onVisibility)
-    }
-  }, [refresh])
+    if (!open) return
+    const stale =
+      lastFetchedAtRef.current === 0 ||
+      Date.now() - lastFetchedAtRef.current > STALE_AFTER_MS
+    if (stale) void refresh()
+  }, [open, refresh])
 
   // Tick `now` once a minute so "5m ago" labels age while the dropdown
   // is open. Cheap (one set/min); only runs while open.

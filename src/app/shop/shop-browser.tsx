@@ -111,8 +111,8 @@ function CategoryRail({
         "rounded-2xl border bg-gradient-to-br from-card via-card to-muted/40 p-1.5 shadow-sm",
         // Mobile/narrow: become a horizontally scrolling strip above
         // the shelf. Desktop: a compact vertical rail — natural
-        // height, no flex-stretching, so all 8 categories fit in
-        // the viewport without scrolling.
+        // height, no flex-stretching, so the full category list
+        // (currently 12) fits in the viewport without scrolling.
         "overflow-x-auto lg:overflow-visible",
       )}
     >

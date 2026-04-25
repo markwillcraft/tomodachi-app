@@ -16,8 +16,9 @@ import {
 // ---------------------------------------------------------------------
 // Compact horizontal-tab layout. The original vertical rail consumed
 // too much height and pushed the page below the fold; pill tabs
-// across the top let us show the same 8 categories in ~36px of
-// vertical space, with the active category's owned items below.
+// across the top fit all 12 categories in ~36px of vertical space
+// (overflow-x-auto kicks in on narrow viewports), with the active
+// category's owned items below.
 //
 // Until inventory rows exist, every tab shows a single-row empty
 // state pointing back to the Store.

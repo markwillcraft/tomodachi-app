@@ -1,12 +1,16 @@
 import {
+  Backpack,
   Cat,
   Crown,
   Footprints,
   Gem,
+  Hand,
   Home,
   Mountain,
   Shirt,
+  Smile,
   Sparkles,
+  Tag,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,9 +34,13 @@ import {
 
 export type ShopCategoryId =
   | "headwear"
+  | "face"
+  | "neck"
   | "tops"
   | "bottoms"
   | "shoes"
+  | "hand"
+  | "back"
   | "pets"
   | "backgrounds"
   | "house"
@@ -43,13 +51,23 @@ export type ShopRarity = "common" | "rare" | "epic" | "legendary";
 export type ShopStatus = "live" | "coming-soon";
 
 // Equippable slot the item occupies on the dashboard mascot canvas.
-// One slot per item; `pets`, `backgrounds`, and `house` decorate the
+// One slot per item; `pet`, `background`, and `house` decorate the
 // scene rather than the mascot itself but still occupy a single slot.
+//
+// Slot z-order on the mascot, back→front:
+//   back-accessory → body → bottom → top → neck → face → headwear →
+//   hand → front-accessory
+// (defined alongside the eventual MascotCanvas; this enum is just the
+// taxonomy.)
 export type ShopSlot =
   | "head"
+  | "face"
+  | "neck"
   | "top"
   | "bottom"
   | "feet"
+  | "hand"
+  | "back"
   | "pet"
   | "background"
   | "house"
@@ -92,14 +110,37 @@ export type ShopItem = {
 
 // ---------- categories ----------
 
+// Ordered top-down body, then held → world → scene. The Inventory
+// EquipStage slices the first half into the left rail and the second
+// half into the right rail, so this order *is* the rail order.
+//
+// Rail layout (each rail spans all 6 tones — no adjacent duplicates):
+//   Left  (outfit, head→feet):   amber, emerald, slate, rose, violet, sky
+//   Right (held, world, scene):  rose,  sky,    emerald, violet, amber, slate
 export const SHOP_CATEGORIES: readonly ShopCategory[] = [
   {
     id: "headwear",
     label: "Headwear",
-    description: "Hats, masks, and crowns to top off your Dachi.",
+    description: "Hats, helmets, and crowns to top off your Dachi.",
     icon: Crown,
     tone: "amber",
     slot: "head",
+  },
+  {
+    id: "face",
+    label: "Face",
+    description: "Glasses, masks, and face paint — change the vibe.",
+    icon: Smile,
+    tone: "emerald",
+    slot: "face",
+  },
+  {
+    id: "neck",
+    label: "Neck",
+    description: "Scarves, ties, omamori — what hangs at the collar.",
+    icon: Tag,
+    tone: "slate",
+    slot: "neck",
   },
   {
     id: "tops",
@@ -124,6 +165,22 @@ export const SHOP_CATEGORIES: readonly ShopCategory[] = [
     icon: Footprints,
     tone: "sky",
     slot: "feet",
+  },
+  {
+    id: "hand",
+    label: "Hand",
+    description: "Books, fans, weapons — what your Dachi holds.",
+    icon: Hand,
+    tone: "rose",
+    slot: "hand",
+  },
+  {
+    id: "back",
+    label: "Back",
+    description: "Backpacks, capes, wings — what's worn behind.",
+    icon: Backpack,
+    tone: "sky",
+    slot: "back",
   },
   {
     id: "pets",
@@ -152,7 +209,7 @@ export const SHOP_CATEGORIES: readonly ShopCategory[] = [
   {
     id: "accessories",
     label: "Accessories",
-    description: "Glasses, scarves, badges — finishing touches.",
+    description: "Pins, ribbons, charms — finishing touches.",
     icon: Gem,
     tone: "slate",
     slot: "accessory",
@@ -206,6 +263,28 @@ export const SHOP_ITEMS: readonly ShopItem[] = [
   item("beanie", "headwear", "Knit beanie", "common", "🧢", "Warm slouchy beanie for cold studies.", "ニット帽"),
   item("flower-pin", "headwear", "Flower pin", "common", "🌼", "A simple bloom tucked behind the ear.", "花飾り"),
 
+  // ---------- face (8) ----------
+  // round-glasses moved here from accessories — they belong on the face.
+  item("oni-paint", "face", "Oni face paint", "legendary", "👹", "Crimson demon paint that pulses on perfect quizzes.", "鬼隈"),
+  item("kabuki-paint", "face", "Kabuki paint", "epic", "🎭", "Bold kumadori stripes from the Edo stage.", "隈取"),
+  item("ninja-mask", "face", "Ninja mask", "epic", "🥷", "Cloth wrap that hides everything but the eyes.", "覆面"),
+  item("eye-patch", "face", "Eye patch", "rare", "🩹", "Black silk patch — instantly mysterious.", "眼帯"),
+  item("monocle", "face", "Monocle", "rare", "🧐", "Single brass lens on a thin gold chain.", "片眼鏡"),
+  item("round-glasses", "face", "Round glasses", "common", "👓", "Wire-rim study specs.", "眼鏡"),
+  item("sunglasses", "face", "Sunglasses", "common", "🕶️", "Tortoiseshell shades for off-day swagger.", "サングラス"),
+  item("surgical-mask", "face", "Surgical mask", "common", "😷", "Pastel everyday mask. Catches no germs, lots of vibes.", "マスク"),
+
+  // ---------- neck (8) ----------
+  // scarf + amulet moved here from accessories — both wrap the neck.
+  item("dragon-pendant", "neck", "Dragon pendant", "epic", "🐉", "Carved jade dragon on a silk cord.", "龍の首飾り"),
+  item("obi-collar", "neck", "Obi collar", "rare", "🎀", "Brocade obi tied tight at the neck.", "帯襟"),
+  item("amulet", "neck", "Omamori charm", "rare", "🧿", "Shrine charm tied to a thin neck cord.", "お守り"),
+  item("headphones", "neck", "Studio headphones", "rare", "🎧", "Big cans, currently around the neck.", "ヘッドホン"),
+  item("scarf", "neck", "Wool scarf", "common", "🧣", "Snug knit scarf for autumn quizzes.", "マフラー"),
+  item("school-tie", "neck", "School tie", "common", "👔", "Navy school-uniform tie, slightly loosened.", "ネクタイ"),
+  item("bell-collar", "neck", "Bell collar", "common", "🔔", "Tiny brass bell that jingles when you study.", "鈴の首輪"),
+  item("bandana", "neck", "Neck bandana", "common", "🌺", "Patterned cotton bandana, casual mode.", "バンダナ"),
+
   // ---------- tops (10) ----------
   item("ninja-gi", "tops", "Ninja gi", "legendary", "🥷", "Stealth-black uppers. Move silently.", "忍び装束"),
   item("kimono-jacket", "tops", "Kimono jacket", "epic", "🥻", "Hand-dyed silk haori.", "羽織"),
@@ -237,6 +316,28 @@ export const SHOP_ITEMS: readonly ShopItem[] = [
   item("sneakers", "shoes", "Harajuku sneakers", "common", "👟", "Bright street-style kicks.", "スニーカー"),
   item("loafers", "shoes", "Leather loafers", "common", "👞", "Polished loafers for school assemblies.", "ローファー"),
   item("sandals", "shoes", "Beach sandals", "common", "🩴", "Easy summer slides for the beach.", "ビーサン"),
+
+  // ---------- hand (8) ----------
+  // ornate-fan + sensei-pipe moved here from accessories — both are held.
+  item("dragon-scroll", "hand", "Dragon scroll", "legendary", "📜", "Ancient scroll inked with a coiling dragon.", "龍の巻物"),
+  item("ornate-fan", "hand", "Ornate fan", "epic", "🪭", "Folding sensu inked with bold kanji.", "扇子"),
+  item("sensei-pipe", "hand", "Sensei pipe", "epic", "🪈", "Old-master kiseru — purely decorative.", "煙管"),
+  item("bokken", "hand", "Bokken", "rare", "⚔️", "Carved oak training sword. Don't actually swing it.", "木刀"),
+  item("shamisen", "hand", "Shamisen", "rare", "🪕", "Three-string lute for late-night practice.", "三味線"),
+  item("chochin-lantern", "hand", "Chōchin lantern", "rare", "🏮", "Hand-held paper lantern that glows softly.", "提灯"),
+  item("study-book", "hand", "Open textbook", "common", "📖", "A well-thumbed grammar book, mid-page.", "教科書"),
+  item("bento", "hand", "Bento box", "common", "🍱", "Two-tier bento — lunch break vibes.", "弁当"),
+
+  // ---------- back (8) ----------
+  // backpack moved here from accessories — it's worn on the back.
+  item("spirit-wings", "back", "Spirit wings", "legendary", "🔥", "Foxfire wings that flicker with study streaks.", "霊翼"),
+  item("dragon-cape", "back", "Dragon cape", "epic", "🐉", "Embroidered cape that ripples like scales.", "龍の外套"),
+  item("tengu-cape", "back", "Tengu feather cape", "epic", "🪶", "Mountain-spirit feathers in deep indigo.", "天狗の羽織"),
+  item("paper-wings", "back", "Paper wings", "rare", "📄", "Folded origami wings — surprisingly sturdy.", "折り翼"),
+  item("samurai-sword-back", "back", "Sword on back", "rare", "🗡️", "Sheathed katana strapped across the back.", "背刀"),
+  item("backpack", "back", "Studio backpack", "common", "🎒", "Sturdy daypack for the daily commute.", "リュック"),
+  item("school-satchel", "back", "School satchel", "common", "👜", "Classic leather randoseru.", "ランドセル"),
+  item("furoshiki", "back", "Furoshiki bundle", "common", "🎁", "Cloth-wrapped bundle slung over the shoulder.", "風呂敷"),
 
   // ---------- pets (10) ----------
   item("baby-dragon", "pets", "Baby dragon", "legendary", "🐲", "Hatchling that breathes tiny sparks.", "竜の子"),
@@ -271,14 +372,17 @@ export const SHOP_ITEMS: readonly ShopItem[] = [
   item("plant-shelf", "house", "Plant shelf", "common", "🪴", "Small bonsai and succulents in a row.", "植木棚"),
 
   // ---------- accessories (8) ----------
-  item("sensei-pipe", "accessories", "Sensei pipe", "epic", "🪈", "Old-master kiseru — purely decorative.", "煙管"),
-  item("ornate-fan", "accessories", "Ornate fan", "epic", "🪭", "Folding sensu inked with kanji.", "扇子"),
+  // Now reserved for small "finishing touch" items that don't belong on
+  // face / neck / hand / back. Glasses, masks, scarves, omamori, fans,
+  // and backpacks all moved out of here into their proper slots above.
+  item("lucky-charm", "accessories", "Lucky charm", "epic", "✨", "Glittering trinket that hums on a streak day.", "幸運の符"),
+  item("brooch", "accessories", "Kanji brooch", "rare", "🈂️", "Enamel brooch stamped with a single kanji.", "ブローチ"),
   item("study-badge", "accessories", "Scholar badge", "rare", "🎖️", "Earned-not-bought vibes (eventually).", "学者の徽章"),
-  item("amulet", "accessories", "Omamori charm", "rare", "🧿", "Shrine charm tied to your wrist.", "お守り"),
-  item("round-glasses", "accessories", "Round glasses", "common", "👓", "Wire-rim study specs.", "眼鏡"),
-  item("scarf", "accessories", "Wool scarf", "common", "🧣", "Snug knit scarf for autumn quizzes.", "マフラー"),
-  item("backpack", "accessories", "Studio backpack", "common", "🎒", "Sturdy daypack for the daily commute.", "リュック"),
+  item("sash-belt", "accessories", "Cloth sash", "rare", "🪢", "Wide cotton sash tied at the waist.", "帯紐"),
   item("watch", "accessories", "Pocket watch", "common", "⌚", "A trusty timer for your timed quizzes.", "懐中時計"),
+  item("enamel-pin", "accessories", "Enamel pin", "common", "📌", "Tiny kawaii pin clipped to the collar.", "ピンバッジ"),
+  item("bow-ribbon", "accessories", "Bow ribbon", "common", "🎀", "Soft satin bow — clip it anywhere.", "リボン"),
+  item("wristband", "accessories", "Wristband", "common", "🪅", "Cloth wrist tie in matching colors.", "リストバンド"),
 ];
 
 // ---------- helpers ----------

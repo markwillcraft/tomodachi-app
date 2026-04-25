@@ -626,10 +626,13 @@ showing off, and rewarding to chase.
   Japanese name), description, price chip, and a disabled **Coming soon**
   CTA. The coin chip in the topbar (and the sidebar coin panels) deep-link
   here.
-- **`/inventory`** — "Your closet" page with an 8-slot equipped-preview grid
-  (Head / Top / Bottom / Feet / Pet / Background / House / Accessory — all
-  Empty) and per-category empty states that point back to the Store. The
-  slot grid is the visual teaser for the Phase 2 dashboard mascot.
+- **`/inventory`** — "Your closet" page with a **12-slot** equipped-preview
+  grid laid out as a paper-doll: 2×3 left rail (Head / Face / Neck / Top /
+  Bottom / Feet — the outfit, top-down), the mascot preview, then 2×3 right
+  rail (Hand / Back / Pet / Background / House / Accessory — held items,
+  then world & scene). Every tile is **Empty** in Phase 1 and per-category
+  empty states point back to the Store. The slot grid is the visual teaser
+  for the Phase 2 dashboard mascot canvas.
 - **Sidebar** — a new **Shop** group sits between Learn and Account with
   Store + Inventory siblings.
 - **No Prisma changes.** Every catalog item is `status: "coming-soon"` so
@@ -638,18 +641,25 @@ showing off, and rewarding to chase.
 Catalog lives in [`src/lib/shop.ts`](src/lib/shop.ts) — typed `const` arrays,
 no DB dependency. Helpers: `getShopCategory(id)`, `getItemsByCategory(id)`.
 
-#### Categories (8)
+#### Categories (12)
+
+Listed in **rail order** — first 6 form the Inventory page's left rail
+(top-down outfit), last 6 form the right rail (held → world → scene).
 
 | Category | Slot | Tone | Example items |
 |---|---|---|---|
 | Headwear | head | amber | Fox mask, Samurai kabuto, Oni mask |
+| Face | face | emerald | Round glasses, Surgical mask, Kabuki paint, Oni paint |
+| Neck | neck | slate | Wool scarf, Omamori charm, Bell collar, Dragon pendant |
 | Tops | top | rose | Yukata top, Kimono jacket, Ninja gi |
 | Bottoms | bottom | violet | Hakama, Samurai greaves |
 | Shoes | feet | sky | Geta sandals, Tabi boots, Dragon boots |
+| Hand | hand | rose | Open textbook, Ornate fan, Bokken, Dragon scroll |
+| Back | back | sky | Studio backpack, Paper wings, Dragon cape, Spirit wings |
 | Pets | pet | emerald | Maneki-neko, Tanuki, Baby dragon |
 | Backgrounds | background | violet | Sakura grove, Torii gate, Mt. Fuji |
 | House | house | amber | Tatami room, Zen garden, Shrine altar |
-| Accessories | accessory | slate | Round glasses, Scholar badge, Sensei pipe |
+| Accessories | accessory | slate | Scholar badge, Enamel pin, Lucky charm |
 
 #### Rarity → price ladder
 
@@ -681,9 +691,10 @@ enough on its own. The cutover plan:
   `spendCoins` → return updated balance + the unlocked item.
 - **Dashboard integration** — replace the `<Image src="/Dachi-mascot.png" />`
   block in [`src/app/dashboard/page.tsx`](src/app/dashboard/page.tsx) with
-  a `<MascotCanvas equipped={…} />` client component that layers
-  head/top/bottom/feet images over the base mascot, and renders the
-  background + house behind it.
+  a `<MascotCanvas equipped={…} />` client component that layers each
+  cosmetic in slot z-order: `back-accessory → body → bottom → top → neck →
+  face → headwear → hand → front-accessory`, with `background` and `house`
+  rendered behind the mascot and `pet` floating beside it.
 - **Inventory** — swap empty-state tiles for owned-item cards with an
   "Equip" toggle that hits `POST /api/shop/equip`.
 
@@ -754,16 +765,27 @@ stays quiet on internal navigation and page reloads.
     desktop, top of safe-area on mobile). Hover/focus pauses the 6s
     auto-dismiss; click marks the row read + navigates; X dismisses.
   - The bell subscribes to a sibling `refresh` channel, so its unread
-    badge and dropdown rehydrate in the same tick — no waiting for
-    the next 60s poll.
+    badge and dropdown rehydrate in the same tick the toast pops.
 - The bell (`src/components/notification-bell.tsx`) is a client
-  component injected into the topbar. It polls
-  `GET /api/notifications?limit=10` every 60s while the tab is
-  visible, re-polls on `window.focus`, immediately re-polls on a
-  `notification-bus` refresh signal, and pauses when the tab is
-  hidden. Clicking a row optimistically decrements the unread badge,
-  fires `POST /api/notifications/[id]/read`, then navigates. "Mark
-  all" hits `POST /api/notifications/read-all` once.
+  component injected into the topbar. It is **fully event-driven**
+  — there is no `setInterval` poll, no `window.focus` refetch, and
+  no `visibilitychange` refetch. `GET /api/notifications?limit=10`
+  fires only when there's a real reason to:
+  1. **Once on mount** — initial unread count for the badge.
+  2. **On bus `refresh`** — any first-party API response carrying a
+     `newNotifications` field auto-dispatches through
+     `notification-bus`, so completing a quiz / drill / lesson
+     refreshes the bell in the same tick the toast pops.
+  3. **Cross-tab** — `notification-bus` mirrors the refresh signal
+     onto a `BroadcastChannel('tomodachi-notifications')`. If you
+     finish a quiz in tab A, tab B's bell hears the cross-tab
+     message and refreshes too — no polling required.
+  4. **On dropdown open** — debounced by a 30s freshness window, so
+     rapid toggles don't generate redundant requests but the user
+     still sees fresh data when they actually look.
+  Clicking a row optimistically decrements the unread badge, fires
+  `POST /api/notifications/[id]/read`, then navigates. "Mark all"
+  hits `POST /api/notifications/read-all` once.
 - Visual formatting (title, body, glyph, tone, target href) lives in
   [`src/lib/notify-format.ts`](src/lib/notify-format.ts) so the
   dropdown, `/notifications` history page, AND the toast stack stay
@@ -848,7 +870,7 @@ All endpoints require Clerk auth via `requireUserId()` and return JSON.
 | `/api/profile/preferences` | POST | Toggle `autoFreezeStreak` etc. |
 | `/api/progress/stats` | GET | Backing data for charts on `/progress`. |
 | `/api/progress/tips` | POST | Gemini tips from `getProgressSummary` (no app UI; reserved for a single future surface per roadmap 09). |
-| `/api/notifications` | GET | Latest in-app notifications + unread count (defaults to 10, max 50). Polled by the topbar bell. |
+| `/api/notifications` | GET | Latest in-app notifications + unread count (defaults to 10, max 50). Called by the topbar bell on mount, on bus refresh (in-tab + cross-tab), and on dropdown open after a 30s freshness window — no polling timer. |
 | `/api/notifications/[id]/read` | POST | Mark a single notification read; returns the updated unread count. |
 | `/api/notifications/read-all` | POST | Mark every unread notification read in one updateMany. |
 
@@ -883,7 +905,7 @@ if (limited) return limited;
 | `ai` | 5 | 1 min | `/api/progress/tips`, `/api/words/import` (LLM-backed) |
 | `write` | 30 | 1 min | quiz/dojo submit, word edits, drill results, profile updates |
 | `view` | 120 | 1 min | `/api/cards/view`, `/api/kana/view`, `/api/kanji/view` (high-volume study writes) |
-| `read` | 120 | 1 min | dashboard / progress / stats / list endpoints (incl. `/api/notifications` polled by the bell) |
+| `read` | 120 | 1 min | dashboard / progress / stats / list endpoints (incl. `/api/notifications` — called event-driven by the bell, not on a timer) |
 | `sensitive` | 10 | 10 min | `/api/streak/freeze/use` (inventory spend) |
 
 Tweak the table in `src/lib/rate-limit.ts` if real traffic shows
@@ -958,11 +980,15 @@ A few patterns the codebase leans on, kept here so refactors don't undo them:
   `GET /api/notifications` poll required to surface the toast. The
   bus also pings the bell to refresh its unread badge in the same
   tick, so the alert and the log entry appear in lockstep.
-- **Bell polling is visibility-gated.** The topbar `NotificationBell`
-  polls `/api/notifications` every 60s only while the tab is visible
-  and re-fires immediately on `window.focus` or on a bus-driven
-  refresh signal; backgrounded tabs are silent so the `read`
-  rate-limit bucket isn't burned by inactive windows.
+- **Bell is fully event-driven, no polling.** The topbar
+  `NotificationBell` only calls `GET /api/notifications` when there's
+  a real reason to: once on mount, on every bus `refresh` (in-tab
+  via `apiFetch` auto-dispatch, cross-tab via
+  `BroadcastChannel('tomodachi-notifications')`), and when the user
+  opens the dropdown after a 30s freshness window. There is no
+  `setInterval`, no `window.focus` refetch, and no
+  `visibilitychange` refetch — backgrounded tabs and rapid focus
+  toggles never burn the `read` rate-limit bucket.
 
 ---
 
