@@ -35,7 +35,7 @@ function formatRelative(ts: number): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   if (days < 14) return `${days}d ago`;
-  return new Date(ts).toLocaleDateString();
+  return new Date(ts).toLocaleDateString("en-US");
 }
 
 export function PracticeHistoryCard() {

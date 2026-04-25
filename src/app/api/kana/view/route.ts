@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth-utils";
 import { HIRAGANA, KATAKANA } from "@/lib/kana";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,11 @@ const KANA_SET = new Set<string>([
 export async function POST(req: Request) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  // Tapping kana cells in the reference grid fires this rapidly.
+  // `view` bucket has the generous limit needed.
+  const limited = await enforceRateLimit("view", userId);
+  if (limited) return limited;
 
   let body: unknown;
   try {

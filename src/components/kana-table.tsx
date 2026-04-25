@@ -195,6 +195,11 @@ function KanaCell({
         ? [hira, kata].filter((s): s is string => Boolean(s))
         : [speakable!];
     for (const t of targets) {
+      // Telemetry-only: stays on native `fetch` (not `apiFetch`)
+      // because we explicitly want fire-and-forget semantics —
+      // 429s and network errors must not throw into the click
+      // handler. `keepalive: true` lets the request finish even
+      // if the user navigates away mid-tap.
       void fetch("/api/kana/view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

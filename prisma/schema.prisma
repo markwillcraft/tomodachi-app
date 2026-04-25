@@ -247,6 +247,42 @@ model DojoProgress {
   @@index([userId, passedAt])
 }
 
+// In-app notification (bell icon in the topbar). Every event the app
+// wants to surface to the user *eventually* lands here: quiz finished,
+// achievement unlocked, daily quest reward claimed, dojo lesson done,
+// daily welcome, etc. Writers are funneled through `src/lib/notify.ts`
+// so the dedupKey contract is enforced in one place.
+//
+// `kind` is a free-form string in the schema but the writers in
+// notify.ts constrain it to a closed enum (see `NotificationKind`
+// there). `payload` is the kind-specific extras the UI needs to render
+// the row (titles, ids, counts, etc.).
+//
+// `dedupKey` is the idempotency contract: same key → no duplicate row.
+// Examples:
+//   - "welcome:user_xyz:2026-04-25"
+//   - "quiz:1234"                    (one per attemptId)
+//   - "achievement:user_xyz:streak_7"
+//   - "quest:2026-04-25:first_quiz"
+//   - "vocab_milestone:user_xyz:2026-04-25:50"
+//
+// `readAt` is null until the user opens the bell or marks it read.
+// Index ordering optimised for the bell list (newest first per user)
+// and the unread-count badge (filter by readAt is null).
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    String
+  kind      String
+  payload   Json
+  dedupKey  String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([userId, dedupKey])
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
+
 // Append-only ledger of every coin grant (and, eventually, spend). The
 // dedupKey is the deduplication contract: e.g. "quiz:<attemptId>" awards
 // quiz coins exactly once even if /api/quiz/submit is retried, and

@@ -4,6 +4,14 @@ import { requireUserId } from "@/lib/auth-utils";
 import { awardForQuiz } from "@/lib/coins";
 import { itemFromResult, recordReview, type ReviewOutcome } from "@/lib/srs";
 import { evaluateAchievements } from "@/lib/achievements";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import {
+  notifyAchievementUnlocked,
+  notifyQuestCompleted,
+  notifyQuizFinished,
+  type NotificationRow,
+} from "@/lib/notify";
+import { getUserTimezone, localDayKey } from "@/lib/time";
 
 export const runtime = "nodejs";
 
@@ -21,6 +29,12 @@ type SubmittedResult = {
 export async function POST(req: Request) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  // Quiz submissions write a QuizAttempt + N QuestionResult rows + run
+  // SRS updates + grant coins. Bound the burst so a script can't spam
+  // achievements / coin grants even though dedupKey would catch most.
+  const limited = await enforceRateLimit("write", userId);
+  if (limited) return limited;
 
   let body: unknown;
   try {
@@ -133,10 +147,51 @@ export async function POST(req: Request) {
   // celebrate them on the results screen.
   const newlyUnlocked = await evaluateAchievements(userId);
 
+  // Fan out in-app notifications. We tolerate failures silently so a
+  // notification outage never breaks the quiz submission response.
+  // Run the quiz/achievement/quest writes in parallel — they target
+  // different dedup keys and their `notify()` failures are already
+  // swallowed. The freshly created rows are echoed back so the client
+  // can pop a toast for each one in the same round trip.
+  let newNotifications: NotificationRow[] = [];
+  try {
+    const tz = await getUserTimezone(userId);
+    const day = localDayKey(new Date(), tz);
+    const tasks: Array<Promise<NotificationRow | null>> = [
+      notifyQuizFinished(userId, attempt.id, { mode, total, correct }),
+    ];
+    for (const a of newlyUnlocked) {
+      tasks.push(
+        notifyAchievementUnlocked(userId, {
+          achievementId: a.id,
+          title: a.title,
+          icon: a.icon,
+        }),
+      );
+    }
+    for (const q of coins.claimedQuests) {
+      tasks.push(
+        notifyQuestCompleted(userId, day, {
+          questId: q.id,
+          title: q.title,
+          reward: q.reward,
+        }),
+      );
+    }
+    const results = await Promise.all(tasks);
+    newNotifications = results.filter(
+      (r): r is NotificationRow => r !== null,
+    );
+  } catch {
+    // Notifications are non-blocking — never let a write here break
+    // the quiz submit response.
+  }
+
   return NextResponse.json({
     attemptId: attempt.id,
     coins,
     newlyUnlocked,
+    newNotifications,
     srs: srsOutcomes.map((o) => ({
       questionIdx: o.questionIdx,
       itemType: o.itemType,

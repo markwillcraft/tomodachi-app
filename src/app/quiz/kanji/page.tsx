@@ -17,6 +17,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { N5_KANJI, KANJI_SECTIONS } from "@/lib/kanji";
 import { cn } from "@/lib/utils";
 import { QuizModeToggle, type QuizSessionMode } from "@/components/quiz-mode-toggle";
+import { apiErrorMessage, apiFetch } from "@/lib/api-client";
 
 const COUNT_OPTIONS = [10, 20, 30, 50];
 
@@ -62,17 +63,18 @@ export default function KanjiQuizSetupPage() {
     setError(null);
     try {
       const sendingAll = subsetChars.length === N5_KANJI.length;
-      const res = await fetch("/api/quiz/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          count,
-          mode: "kanji",
-          kanjiChars: sendingAll ? undefined : subsetChars,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to start quiz");
+      const data = await apiFetch<{ questions: unknown[] }>(
+        "/api/quiz/generate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            count,
+            mode: "kanji",
+            kanjiChars: sendingAll ? undefined : subsetChars,
+          }),
+        },
+      );
       sessionStorage.setItem(
         "quiz",
         JSON.stringify({
@@ -83,7 +85,7 @@ export default function KanjiQuizSetupPage() {
       );
       router.push("/quiz/play");
     } catch (e) {
-      setError((e as Error).message);
+      setError(apiErrorMessage(e, "Failed to start quiz"));
       setLoading(false);
     }
   }

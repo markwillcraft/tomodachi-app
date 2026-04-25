@@ -34,6 +34,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { speakJapanese } from "@/lib/speech"
+import { apiErrorMessage, apiFetch } from "@/lib/api-client"
 import type {
   DrillQuestion,
   ListeningPrompt,
@@ -186,24 +187,22 @@ export function DrillRunner(props: DrillRunnerProps) {
     setPhase("submitting")
     setSubmitError(null)
     try {
-      const res = await fetch("/api/dojo/submit-section", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lessonId,
-          section,
-          answers: finalAnswers.map((a) => ({
-            questionId: a.questionId,
-            pickedIndex: a.pickedIndex,
-            timeMs: a.timeMs,
-          })),
-        }),
-      })
-      if (!res.ok) {
-        const { error } = await res.json().catch(() => ({ error: null }))
-        throw new Error(error || "Submit failed")
-      }
-      const data = (await res.json()) as SubmitResponse
+      const data = await apiFetch<SubmitResponse>(
+        "/api/dojo/submit-section",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lessonId,
+            section,
+            answers: finalAnswers.map((a) => ({
+              questionId: a.questionId,
+              pickedIndex: a.pickedIndex,
+              timeMs: a.timeMs,
+            })),
+          }),
+        },
+      )
       setServerResult(data)
       setPhase("results")
       if (data.progress.newlyCompletedLesson) {
@@ -211,7 +210,7 @@ export function DrillRunner(props: DrillRunnerProps) {
       }
       router.refresh()
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Submit failed")
+      setSubmitError(apiErrorMessage(err, "Submit failed"))
       setPhase("results")
     }
   }

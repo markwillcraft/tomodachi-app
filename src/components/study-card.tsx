@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { hasJapaneseVoiceInstalled, speakJapanese } from "@/lib/speech";
+import { apiErrorMessage, apiFetch } from "@/lib/api-client";
 
 export type StudyWord = {
   id: number;
@@ -140,6 +141,12 @@ export function StudyCardDeck({
     seenThisSession.current.add(wordId);
     setLogging(true);
     try {
+      // Telemetry-only: deliberately stays on native `fetch` because
+      // we don't want a 429 here to throw and clutter the console
+      // (the call is fire-and-forget; the only consequence is the
+      // mastery modal not advancing this card to "Started" until
+      // the user re-views). The session-level dedup means we won't
+      // hammer the endpoint either way.
       await fetch("/api/cards/view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -572,16 +579,17 @@ function EditForm({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/words/${word.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          romaji: romaji.trim().toLowerCase(),
-          english: english.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not save");
+      const data = await apiFetch<{ word: StudyWord }>(
+        `/api/words/${word.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            romaji: romaji.trim().toLowerCase(),
+            english: english.trim(),
+          }),
+        },
+      );
       onSaved({
         ...word,
         romaji: data.word.romaji,
@@ -590,7 +598,7 @@ function EditForm({
         english: data.word.english,
       });
     } catch (e) {
-      setError((e as Error).message);
+      setError(apiErrorMessage(e, "Could not save"));
     } finally {
       setSaving(false);
     }

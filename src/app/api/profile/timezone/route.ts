@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUserId } from "@/lib/auth-utils";
 import { isValidTimezone, setUserTimezone } from "@/lib/time";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,9 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  const limited = await enforceRateLimit("write", userId);
+  if (limited) return limited;
 
   let body: unknown;
   try {

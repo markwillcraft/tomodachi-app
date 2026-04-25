@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth-utils";
 import { getCategoryBySlug } from "@/lib/categories";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  const limited = await enforceRateLimit("write", userId);
+  if (limited) return limited;
 
   let body: unknown;
   try {

@@ -17,6 +17,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { KANA_GROUPS, type KanaScript } from "@/lib/kana";
 import { cn } from "@/lib/utils";
 import { QuizModeToggle, type QuizSessionMode } from "@/components/quiz-mode-toggle";
+import { apiErrorMessage, apiFetch } from "@/lib/api-client";
 
 const COUNT_OPTIONS = [10, 20, 30, 50];
 
@@ -72,18 +73,19 @@ export default function KanaQuizSetupPage() {
       // and let the API split the subset. The play UI cares about
       // hiragana_char vs katakana_char question kinds.
       const mode = script === "katakana" ? "katakana" : "hiragana";
-      const res = await fetch("/api/quiz/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          count,
-          mode,
-          kanaScript: script,
-          kanaGroups: Array.from(selected),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to start quiz");
+      const data = await apiFetch<{ questions: unknown[] }>(
+        "/api/quiz/generate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            count,
+            mode,
+            kanaScript: script,
+            kanaGroups: Array.from(selected),
+          }),
+        },
+      );
       sessionStorage.setItem(
         "quiz",
         JSON.stringify({
@@ -94,7 +96,7 @@ export default function KanaQuizSetupPage() {
       );
       router.push("/quiz/play");
     } catch (e) {
-      setError((e as Error).message);
+      setError(apiErrorMessage(e, "Failed to start quiz"));
       setLoading(false);
     }
   }

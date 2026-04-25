@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiErrorMessage, apiFetch } from "@/lib/api-client";
 
 // Tiny overlay button placed inside an eligible calendar cell when the
 // user has the manual-freeze preference on. Calling the API fires a
@@ -28,23 +29,25 @@ export function FreezeCellButton({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/streak/freeze/use", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ day: dayKey }),
-      });
-      const data = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        error?: string;
-      } | null;
-      if (!res.ok || !data?.ok) {
+      const data = await apiFetch<{ ok?: boolean; error?: string }>(
+        "/api/streak/freeze/use",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ day: dayKey }),
+        },
+      );
+      // The server returns 200 with `{ok:false,error:...}` for the
+      // "no freezes available" case (vs. a hard 4xx). Preserve that
+      // soft-fail surface — `apiFetch` only throws on non-2xx.
+      if (!data?.ok) {
         setError(data?.error ?? "Could not apply freeze");
         setBusy(false);
         return;
       }
       router.refresh();
-    } catch {
-      setError("Network error");
+    } catch (e) {
+      setError(apiErrorMessage(e, "Network error"));
       setBusy(false);
     }
   }

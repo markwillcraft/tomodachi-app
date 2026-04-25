@@ -28,6 +28,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { speakJapanese } from "@/lib/speech";
 import { cn } from "@/lib/utils";
+import { apiErrorMessage, apiFetch } from "@/lib/api-client";
 
 type WordExample = {
   jp: string;
@@ -78,22 +79,18 @@ export function CategoryWordsTable({
     setBusyRomaji(word.romaji);
     setError(null);
     try {
-      const res = await fetch("/api/categories/add", {
+      await apiFetch("/api/categories/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slug, romaji: [word.romaji] }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Could not add word");
-      }
       setOwned((prev) => {
         const next = new Set(prev);
         next.add(word.romaji.toLowerCase());
         return next;
       });
     } catch (e) {
-      setError((e as Error).message);
+      setError(apiErrorMessage(e, "Could not add word"));
     } finally {
       setBusyRomaji(null);
     }
@@ -104,7 +101,7 @@ export function CategoryWordsTable({
     setBusyAll(true);
     setError(null);
     try {
-      const res = await fetch("/api/categories/add", {
+      await apiFetch("/api/categories/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -112,17 +109,13 @@ export function CategoryWordsTable({
           romaji: remaining.map((w) => w.romaji),
         }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Could not add words");
-      }
       setOwned((prev) => {
         const next = new Set(prev);
         for (const w of remaining) next.add(w.romaji.toLowerCase());
         return next;
       });
     } catch (e) {
-      setError((e as Error).message);
+      setError(apiErrorMessage(e, "Could not add words"));
     } finally {
       setBusyAll(false);
     }

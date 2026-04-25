@@ -10,6 +10,7 @@ import {
 } from "@/lib/quiz";
 import { HIRAGANA, KATAKANA, type KanaPair } from "@/lib/kana";
 import { N5_KANJI, type Kanji } from "@/lib/kanji";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -33,6 +34,9 @@ const KANA_KINDS: QuestionKind[] = ["hiragana_char", "katakana_char"];
 export async function GET(req: Request) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  const limited = await enforceRateLimit("read", userId);
+  if (limited) return limited;
 
   const { searchParams } = new URL(req.url);
   const rawLimit = Number(searchParams.get("limit") ?? 20);

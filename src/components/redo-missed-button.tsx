@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { apiErrorMessage, apiFetch } from "@/lib/api-client";
 
 type Variant = "primary" | "outline" | "ghost";
 
@@ -39,12 +40,9 @@ export function RedoMissedButton({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/quiz/redo-missed?limit=${limit}`);
-      if (!res.ok) {
-        setError("Could not load missed questions.");
-        return;
-      }
-      const data = (await res.json()) as { questions?: unknown };
+      const data = await apiFetch<{ questions?: unknown }>(
+        `/api/quiz/redo-missed?limit=${limit}`,
+      );
       if (!Array.isArray(data.questions) || data.questions.length === 0) {
         setError("No missed questions to drill yet — take a quiz first.");
         return;
@@ -61,8 +59,8 @@ export function RedoMissedButton({
         }),
       );
       router.push("/quiz/play");
-    } catch {
-      setError("Network error.");
+    } catch (e) {
+      setError(apiErrorMessage(e, "Could not load missed questions."));
     } finally {
       setLoading(false);
     }

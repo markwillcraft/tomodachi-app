@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Check, Loader2, Shield, ShieldOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
+import { apiFetch } from "@/lib/api-client";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -32,7 +33,7 @@ export function SettingsForm({
     setAutoFreeze(next);
     setSavingFreeze("saving");
     try {
-      const res = await fetch("/api/profile/preferences", {
+      await apiFetch("/api/profile/preferences", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -40,7 +41,6 @@ export function SettingsForm({
           timezoneHint: browserTz,
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
       setSavingFreeze("saved");
       setTimeout(() => setSavingFreeze("idle"), 1500);
     } catch {
@@ -53,12 +53,11 @@ export function SettingsForm({
     if (!browserTz) return;
     setSavingTz("saving");
     try {
-      const res = await fetch("/api/profile/timezone", {
+      await apiFetch("/api/profile/timezone", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timezone: browserTz }),
       });
-      if (!res.ok) throw new Error(await res.text());
       setTz(browserTz);
       setSavingTz("saved");
       setTimeout(() => setSavingTz("idle"), 1500);

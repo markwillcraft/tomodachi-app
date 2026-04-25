@@ -8,7 +8,6 @@ import {
   Languages,
   Play,
   RotateCcw,
-  Sparkles,
   Target,
   TrendingUp,
 } from "lucide-react";
@@ -179,20 +178,19 @@ export default async function QuizHubPage() {
 
       <section className="flex items-start gap-3 rounded-xl border bg-gradient-to-r from-violet-500/5 via-muted/30 to-transparent p-5 text-sm text-muted-foreground">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-violet-500 dark:text-violet-300">
-          <Sparkles className="size-4" />
+          <TrendingUp className="size-4" />
         </span>
         <div>
-          <strong className="text-foreground">AI tip:</strong> the study coach
-          on the{" "}
+          <strong className="text-foreground">Hint:</strong> the{" "}
           <Link
             href="/progress"
             className="font-medium text-foreground underline-offset-4 hover:underline"
           >
             Progress page
           </Link>{" "}
-          looks at your weakest words across all quiz types and tells you what
-          to drill next. Also keep an eye on your{" "}
-          <Flame className="inline size-3 text-orange-400" /> streak.
+          shows accuracy by mode, slowest items, and recent attempts. Also keep
+          an eye on your <Flame className="inline size-3 text-orange-400" />{" "}
+          streak.
         </div>
       </section>
     </div>

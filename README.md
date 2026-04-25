@@ -34,10 +34,12 @@ does it. If you change behavior in code, update the matching section here.
    - [Progress page](#progress-page)
    - [Settings & timezone](#settings--timezone)
    - [Shop & Inventory](#shop--inventory)
+   - [In-app notifications](#in-app-notifications)
 5. [Data model](#data-model)
 6. [API surface](#api-surface)
-7. [Performance notes](#performance-notes)
-8. [Conventions](#conventions)
+7. [Rate limiting & abuse protection](#rate-limiting--abuse-protection)
+8. [Performance notes](#performance-notes)
+9. [Conventions](#conventions)
 
 ---
 
@@ -50,7 +52,7 @@ does it. If you change behavior in code, update the matching section here.
 | Styling | Tailwind CSS + shadcn/ui (Radix primitives, lucide-react icons) |
 | Auth | **Clerk** (`@clerk/nextjs`) — Google / email / magic links |
 | DB | **Postgres** via **Prisma** ORM. Neon (serverless) recommended in prod |
-| AI | **Google Gemini** (`gemini-flash-latest`) for romaji enrichment + study tips |
+| AI | **Google Gemini** (`gemini-flash-latest`) for romaji enrichment; study-tips API at `POST /api/progress/tips` (no in-app UI yet — see [roadmap 09](.cursor/docs/roadmap/09-tiers-and-trial.md)) |
 | Romaji ↔ kana | `wanakana` |
 | Charts | `recharts` |
 | Speech | Browser Web Speech API (`speechSynthesis`) |
@@ -79,6 +81,7 @@ cp .env.example .env
 #   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 #   CLERK_SECRET_KEY
 #   GEMINI_API_KEY
+#   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN  (optional in dev)
 npx prisma migrate deploy
 npm run dev
 ```
@@ -87,6 +90,12 @@ Open <http://localhost:3000>, click **Sign up**, and you're in.
 
 > First-run tip: visit **N5 Categories** and "Add all" — you'll have a working
 > vocabulary library in one click.
+
+> Upstash Redis is **optional in local dev** — `src/lib/rate-limit.ts`
+> becomes a no-op when its env vars are missing. It is **required in
+> production** to cap LLM costs and protect Postgres from runaway
+> scripts. Free tier (10k commands/day) covers ~5k DAU. See the
+> [Rate limiting](#rate-limiting--abuse-protection) section.
 
 ---
 
@@ -102,6 +111,8 @@ Open <http://localhost:3000>, click **Sign up**, and you're in.
    - `NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/dashboard`
    - `NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/dashboard`
    - `GEMINI_API_KEY`
+   - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` — **required**
+     in prod. Create a free Redis at <https://console.upstash.com>.
 4. **Clerk dashboard → Domains** — add your `*.vercel.app` (and a custom
    domain if you have one). For Google sign-in in production, list the domain
    on the Google OAuth consent screen too.
@@ -140,7 +151,12 @@ Three ways to build your library, all writing to the `Word` table:
 2. **Bulk import** (`/import`). Paste or upload a `.txt` of romaji lines.
    Gemini enriches each line into `{ romaji, hiragana, katakana, english }`
    via `src/lib/enrich.ts`. Failures fall back to `wanakana` for the kana
-   conversion. Tracked as `source = "import"`.
+   conversion. Tracked as `source = "import"`. The page itself
+   (`src/app/import/page.tsx`) is a Server Component that pre-loads the
+   library via Prisma; the client island (`import-client.tsx`) handles
+   the textarea, edits, and deletes through `apiFetch` and triggers a
+   `router.refresh()` after each mutation so the server-rendered list
+   re-runs with fresh data.
 3. **Inline edits** anywhere a vocab card is shown.
 
 Words are deduped per user via `@@unique([userId, romaji])`.
@@ -326,7 +342,10 @@ any surface, no curriculum on top. It has:
   - **N5 kanji** (`/study/kanji/[char]`) — animated stroke order, on'yomi /
     kun'yomi audio, themed sections. Logs a `KanjiView` on dwell / audio.
   - **Muscle memory** (`/study/muscle-memory`) — typing-trainer drill: type the
-    romaji as kana scroll past. Awards coins via `/api/study/kana-drill`.
+    romaji as kana scroll past. Setup defaults to all **basic (gojuon) rows**
+    selected (instead of only five starter rows), with the **Basic** quick-filter
+    tab shown as active by default, and session lengths
+    `10 / 20 / 50 / 100 / 200`. Awards coins via `/api/study/kana-drill`.
 
 ### Quiz engine
 
@@ -563,7 +582,16 @@ due, hinting at the dedicated **Spaced review** section right below.
   `/progress/attempts/[id]` for the per-question breakdown (prompt, picked,
   correct answer, time taken, ✓/✗).
 - **Weakest words** and **Slowest words** tables.
-- **AI study tips** via Gemini (`/api/progress/tips`).
+- **AI study tips** are not shown in the UI for now. The `POST /api/progress/tips` route and Gemini helper remain; when the feature returns it will be exposed in **one in-app place only** (see `.cursor/docs/roadmap/09-tiers-and-trial.md`).
+
+The page is a Server Component (`src/app/progress/page.tsx`) that calls
+`getProgressStatsForUser(userId)` from `src/lib/progress-stats.ts` directly
+— no client-side fetch, no skeleton flash, no extra `read`-bucket charge
+on top of the route render. The interactive bits (recent-attempts
+pagination, recharts) live in the client island
+`src/app/progress/progress-view.tsx`. The `GET /api/progress/stats` route
+is preserved for future client-side refresh, embedding, or third-party
+tooling and now also delegates to `getProgressStatsForUser`.
 
 ### Settings & timezone
 
@@ -652,6 +680,113 @@ enough on its own. The cutover plan:
 - **Inventory** — swap empty-state tiles for owned-item cards with an
   "Equip" toggle that hits `POST /api/shop/equip`.
 
+### In-app notifications
+
+The bell icon in the topbar (next to the coin chip) is the user's
+persistent feed for things that happened in their account: a quiz
+they just finished, an achievement they just unlocked, a Dojo lesson
+they just completed, and a daily quest reward that was just claimed.
+Click a row to mark it read and jump to the relevant page; the full
+history lives at `/notifications`.
+
+Every notification is **also** rendered as a transient toast the
+moment it fires — the bell is the persistent log, the toast is the
+real-time alert. A "Vocab milestone" landing in the bell while the
+user is on the vocab cards page also pops a card under the topbar
+that they can click (mark-read + navigate) or dismiss. The toast
+stack lives at the top-right (anchored under the bell so the visual
+association is "this slid out of the bell"); the welcome toast lives
+at the bottom-right so the two never collide.
+
+The "Welcome back, &lt;name&gt;" greeting is **not** logged in the
+bell — it renders only as a transient floating toast
+(bottom-right, auto-dismiss after ~6s) the first time the signed-in
+shell mounts in a browser session
+(`src/components/welcome-toast.tsx`). A fresh sign-in always creates
+a fresh `sessionStorage` scope, so the toast fires on every login but
+stays quiet on internal navigation and page reloads.
+
+**Triggers (initial scope)**
+
+| Event | Where it fires | Notification kind |
+|---|---|---|
+| Quiz submitted (vocab / kana / kanji / dojo section) | `POST /api/quiz/submit`, `POST /api/dojo/submit-section` | `session.quiz` |
+| Kana muscle-memory drill completed | `POST /api/study/kana-drill` | `session.kana_drill` |
+| Crossed 25 / 50 / 100 vocab cards studied today | `POST /api/cards/view` | `session.cards_milestone` |
+| Crossed 25 / 50 / 100 kanji studied today | `POST /api/kanji/view` | `session.kanji_milestone` |
+| Last section of a Dojo lesson passed | `POST /api/dojo/submit-section` | `lesson.dojo_completed` |
+| Achievement unlocked | Anywhere `evaluateAchievements()` returns rows | `achievement.unlocked` |
+| Daily quest reward claimed | After `claimEligibleQuests()` returns rows | `quest.completed` |
+
+**Mechanics**
+
+- All writes go through the typed wrappers in
+  [`src/lib/notify.ts`](src/lib/notify.ts) — never insert into
+  `Notification` directly. Each kind has a fixed `dedupKey` shape (e.g.
+  `quiz:<attemptId>`, `achievement:<userId>:<id>`,
+  `quest:<localDay>:<questId>`) so re-firing on a network retry, a
+  client-side double-tap, or a layout re-render is a no-op at the
+  database. `src/lib/coins.ts` returns the list of *just-claimed*
+  quests on its `CoinAwardSummary.claimedQuests` field so trigger
+  routes can fan out without a re-query.
+- Card / kanji daily milestones piggyback on the per-day awarded-views
+  count that `awardForCardView` / `awardForKanjiView` already compute
+  (no extra query). The tier crossing is detected by
+  `maybeNotifyCardsMilestone` / `maybeNotifyKanjiMilestone` in
+  `src/lib/notify.ts`.
+- **Alert + log in one round trip.** Each `notify*` writer returns
+  the freshly created `NotificationRow` (or `null` on dedup). Trigger
+  routes collect those rows and attach them to their JSON response
+  as `newNotifications: NotificationRow[]`. The client `apiFetch`
+  wrapper inspects every 2xx body for that field and dispatches the
+  rows through the in-process pub/sub at
+  [`src/lib/notification-bus.ts`](src/lib/notification-bus.ts). That
+  bus drives two consumers:
+  - `<NotificationToastStack/>` ([`src/components/notification-toast-stack.tsx`](src/components/notification-toast-stack.tsx))
+    pops each row as a transient card under the topbar (top-right on
+    desktop, top of safe-area on mobile). Hover/focus pauses the 6s
+    auto-dismiss; click marks the row read + navigates; X dismisses.
+  - The bell subscribes to a sibling `refresh` channel, so its unread
+    badge and dropdown rehydrate in the same tick — no waiting for
+    the next 60s poll.
+- The bell (`src/components/notification-bell.tsx`) is a client
+  component injected into the topbar. It polls
+  `GET /api/notifications?limit=10` every 60s while the tab is
+  visible, re-polls on `window.focus`, immediately re-polls on a
+  `notification-bus` refresh signal, and pauses when the tab is
+  hidden. Clicking a row optimistically decrements the unread badge,
+  fires `POST /api/notifications/[id]/read`, then navigates. "Mark
+  all" hits `POST /api/notifications/read-all` once.
+- Visual formatting (title, body, glyph, tone, target href) lives in
+  [`src/lib/notify-format.ts`](src/lib/notify-format.ts) so the
+  dropdown, `/notifications` history page, AND the toast stack stay
+  in lockstep. Quiz notifications include the quiz type in the body
+  copy (e.g. `Vocab quiz`, `Kanji quiz`, `Dojo grammar`) alongside the
+  score so users can tell what session just completed.
+- All notification writes are wrapped in `try/catch` at the call site
+  — a notification outage must never break the user-facing action
+  (quiz submit, dojo lesson complete, etc.). On the client side, a
+  malformed or missing `newNotifications` field is silently ignored
+  by the `apiFetch` extractor.
+
+**Routes**
+
+- `/` topbar bell — present on every signed-in page.
+- `/notifications` — Server Component shell + `NotificationsClient`
+  island showing the latest 50 with mark-read / mark-all controls.
+- The welcome toast has no route of its own; it is mounted at the root
+  of the signed-in `AppShell` so it pops in regardless of the landing
+  page after sign-in.
+
+**Cross-links** — quest claims fired here are the same rows recorded
+by [Coins](#coins) → [Daily quests](#daily-quests); achievement
+unlocks here mirror the celebrations on the
+[Achievements](#achievements) page; dojo lesson completions echo the
+modal from [Dojo](#dojo-guided-curriculum). Roadmap for the next slice
+(streak warnings, friend events, admin announcements, per-kind
+opt-outs) lives in
+[`.cursor/docs/roadmap/04-in-app-notifications.md`](.cursor/docs/roadmap/04-in-app-notifications.md).
+
 ---
 
 ## Data model
@@ -673,6 +808,7 @@ All tables are keyed by `userId` (Clerk id) for tenancy isolation.
 | `Achievement` | Claimed milestones, dedup'd by `(userId, achievementId)`. |
 | `CoinLedger` | Append-only coin history. Balance = sum(amount). Dedup'd by `dedupKey`. |
 | `DojoProgress` | Per-section Dojo progress (`bestScorePct`, `attempts`, `passedAt`). Unique on `(userId, lessonId, section)`. |
+| `Notification` | In-app bell entries. `kind` + `payload` (JSONB) + `dedupKey` (idempotency). Indexed on `(userId, createdAt)` and `(userId, readAt)`. |
 
 Migrations live in `prisma/migrations/`. Use `npx prisma migrate dev --name <slug>`
 when you change the schema and `npx prisma migrate deploy` in CI/prod.
@@ -704,7 +840,71 @@ All endpoints require Clerk auth via `requireUserId()` and return JSON.
 | `/api/profile/timezone` | POST | Persist the browser's IANA timezone. |
 | `/api/profile/preferences` | POST | Toggle `autoFreezeStreak` etc. |
 | `/api/progress/stats` | GET | Backing data for charts on `/progress`. |
-| `/api/progress/tips` | GET | Gemini-powered weak-spot tips. |
+| `/api/progress/tips` | POST | Gemini tips from `getProgressSummary` (no app UI; reserved for a single future surface per roadmap 09). |
+| `/api/notifications` | GET | Latest in-app notifications + unread count (defaults to 10, max 50). Polled by the topbar bell. |
+| `/api/notifications/[id]/read` | POST | Mark a single notification read; returns the updated unread count. |
+| `/api/notifications/read-all` | POST | Mark every unread notification read in one updateMany. |
+
+> **Every endpoint above is rate-limited per-user** via
+> [`src/lib/rate-limit.ts`](src/lib/rate-limit.ts). When a user exceeds
+> the bucket, the route returns `429 Too Many Requests` with
+> `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
+> `X-RateLimit-Reset` headers. See the next section for bucket sizes.
+
+---
+
+## Rate limiting & abuse protection
+
+Backed by **Upstash Redis** + `@upstash/ratelimit` (sliding-window
+counters). One helper is the only thing routes call:
+[`enforceRateLimit(category, identifier)`](src/lib/rate-limit.ts).
+Returns `null` when allowed, a `429 NextResponse` when over budget —
+drop-in after `requireUserId()`:
+
+```ts
+const userId = await requireUserId();
+if (userId instanceof NextResponse) return userId;
+
+const limited = await enforceRateLimit("write", userId);
+if (limited) return limited;
+```
+
+**Buckets** (per user, sliding window):
+
+| Category | Limit | Window | Used by |
+|---|---:|---|---|
+| `ai` | 5 | 1 min | `/api/progress/tips`, `/api/words/import` (LLM-backed) |
+| `write` | 30 | 1 min | quiz/dojo submit, word edits, drill results, profile updates |
+| `view` | 120 | 1 min | `/api/cards/view`, `/api/kana/view`, `/api/kanji/view` (high-volume study writes) |
+| `read` | 120 | 1 min | dashboard / progress / stats / list endpoints (incl. `/api/notifications` polled by the bell) |
+| `sensitive` | 10 | 10 min | `/api/streak/freeze/use` (inventory spend) |
+
+Tweak the table in `src/lib/rate-limit.ts` if real traffic shows
+different shapes. The categories are intentionally coarse — five
+buckets is enough to cover every route without a per-route registry to
+maintain.
+
+**Graceful degradation.** When `UPSTASH_REDIS_REST_URL` /
+`UPSTASH_REDIS_REST_TOKEN` are unset, the helper returns
+`{ success: true, configured: false }` and every request passes through.
+This keeps local dev frictionless. In production the missing-config
+path logs a single warning per cold start so it's visible if you forget.
+
+**Fail-open on Redis errors.** If Upstash itself is unreachable
+(network blip, regional outage), the helper logs the error and lets
+the request through rather than 503-ing the whole app. The Gemini bill
+is the worst case here, and Gemini has its own SDK-level retries.
+
+**What this does *not* protect against:**
+
+- **Network-layer DDoS** — handled by Vercel's edge (free tier
+  includes baseline DDoS protection; Vercel Pro adds Web Application
+  Firewall rules).
+- **Sign-up bot flooding** — handled by Clerk's built-in bot
+  detection. Enable "Bot signup protection" in the Clerk dashboard.
+- **Multi-account abuse** (one user, many Clerk accounts to dodge
+  per-user limits) — needs IP-level rate limiting on `/sign-up` and
+  email-domain heuristics. Tracked separately, not blocking launch.
 
 ---
 
@@ -737,6 +937,25 @@ A few patterns the codebase leans on, kept here so refactors don't undo them:
   free and quest claims can never double-pay.
 - **Daily rollover on local midnight.** Anything date-bucketed (streak, quests,
   today's earnings) uses `localDayKey()` from `src/lib/time.ts`, never `new Date().toDateString()` (which is a UTC concept).
+- **Notification fan-out is non-blocking.** Every `notify*` call from a
+  trigger route is wrapped in `try/catch` so a `Notification` insert
+  failure (or a Postgres blip) never breaks the user-facing action
+  (`/api/quiz/submit` etc.). Card / kanji daily milestones reuse the
+  awarded-views count that the coin helper already computed for the
+  cap check, so adding the bell does not add a per-request COUNT
+  query on the hot view-logging endpoints.
+- **Toast + log share one round trip.** Trigger routes echo the rows
+  they just inserted as `newNotifications` in their JSON response.
+  The `apiFetch` wrapper auto-dispatches them through
+  `notification-bus.ts` — no per-call-site plumbing, no second
+  `GET /api/notifications` poll required to surface the toast. The
+  bus also pings the bell to refresh its unread badge in the same
+  tick, so the alert and the log entry appear in lockstep.
+- **Bell polling is visibility-gated.** The topbar `NotificationBell`
+  polls `/api/notifications` every 60s only while the tab is visible
+  and re-fires immediately on `window.focus` or on a bus-driven
+  refresh signal; backgrounded tabs are silent so the `read`
+  rate-limit bucket isn't burned by inactive windows.
 
 ---
 
@@ -745,7 +964,36 @@ A few patterns the codebase leans on, kept here so refactors don't undo them:
 - **Don't break achievement ids.** Renaming an `id` re-locks the achievement
   for everyone. Append new entries; never edit existing ids.
 - **Server components do the data fetching.** Client components are reserved
-  for interactivity (quiz play, kana table audio, modal state).
+  for interactivity (quiz play, kana table audio, modal state). When a page
+  needs both, prefer a Server Component shell that passes data into a small
+  client island as props — see `src/app/progress/page.tsx` →
+  `progress-view.tsx`, `src/app/quiz/vocab/page.tsx` →
+  `vocab-quiz-form.tsx`, `src/app/import/page.tsx` →
+  `import-client.tsx`, and `src/app/notifications/page.tsx` →
+  `notifications-client.tsx` for the canonical shape. Mutations from
+  the client island re-trigger the shell with `router.refresh()` (see
+  the `/import` page) instead of re-fetching into local state. Avoid
+  `useEffect → fetch` on first render; that's the anti-pattern this
+  convention exists to prevent.
+- **Client `fetch` to first-party `/api/*` goes through `apiFetch` from
+  `src/lib/api-client.ts`.** It throws `ApiRateLimitError` on 429 (with
+  `retryAfter` extracted) and `ApiError` on other non-2xx with the parsed
+  body, so call sites don't keep re-implementing JSON parsing and 429
+  handling. Pass an `AbortSignal` for cancellable mounts. Use
+  `apiErrorMessage(e, fallback)` from the same module to format the
+  caught error for the UI — it produces a friendly "You're going too
+  fast. Try again in Xs." string for rate-limit errors and falls through
+  to the server's `error` field otherwise. The only first-party `fetch`
+  calls allowed to stay on the native API are *intentional fire-and-forget
+  telemetry* (currently `/api/cards/view`, `/api/kanji/view`,
+  `/api/kana/view`, and the kana-drill coin minter); each of those sites
+  carries an inline comment justifying the exception so reviewers don't
+  re-litigate it.
+- **Client-only side effects belong in dedicated hooks, not inlined into
+  shells.** The browser-timezone self-healing sync lives in
+  `useTimezoneSync` (`src/lib/use-timezone-sync.ts`), called from
+  `AppShell`. New cross-page client effects should follow the same
+  pattern so the shell stays focused on layout.
 - **Comments explain *why*, not *what*.** Especially in `srs.ts`, `coins.ts`,
   `n5-paths.ts`, and `achievements.ts` — the math has reasons.
 - **Time math always uses `src/lib/time.ts` helpers.** Local midnight, local
@@ -753,6 +1001,18 @@ A few patterns the codebase leans on, kept here so refactors don't undo them:
   on this file.
 - **API handlers funnel through `requireUserId()`.** No raw `auth()` outside
   the helper.
+- **Every API route calls `enforceRateLimit(category, userId)`** right
+  after auth. Pick a bucket from the table in
+  [Rate limiting](#rate-limiting--abuse-protection) — the helper owns
+  the response shape, headers, and degraded-mode behavior. Skipping
+  this on a new endpoint is a review blocker.
+- **Client components must not call `n.toLocaleString()` without a
+  fixed locale** — Node (SSR) and the browser can disagree and trigger
+  React hydration errors. Use `formatInt(n)` from `src/lib/utils.ts` for
+  integers, or pass `"en-US"` (or another explicit locale) to
+  `toLocaleString` / `toLocaleDateString` / `Intl.DateTimeFormat`. Defer
+  any `Date.now()`-driven text to `useEffect` (see `ResetCountdown` in
+  `src/components/daily-quests.tsx`).
 - **README stays in sync with code.** Every behaviour, schema, API, env, or
   feature change must update the matching section here in the same change.
   Enforced by `.cursor/rules/readme-maintenance.mdc` (always-applied agent
@@ -773,3 +1033,11 @@ If something on a page feels off, the source-of-truth file is usually one of:
 | Time / timezone | `src/lib/time.ts` |
 | Shop / Inventory catalog | `src/lib/shop.ts` |
 | Dojo curriculum (Genki I + II) | `src/lib/dojo.ts` |
+| Per-user rate limits | `src/lib/rate-limit.ts` |
+| `formatInt` (locale-stable numbers in client components) | `src/lib/utils.ts` |
+| `/progress` data shape (used by both the page and the API) | `src/lib/progress-stats.ts` |
+| Client `fetch` wrapper (429-aware, typed errors) | `src/lib/api-client.ts` |
+| Browser-timezone self-healing sync | `src/lib/use-timezone-sync.ts` |
+| In-app notification writers + types | `src/lib/notify.ts` |
+| Notification card formatting (title / body / glyph / tone) | `src/lib/notify-format.ts` |
+| Toast + bell-refresh client pub/sub | `src/lib/notification-bus.ts` |

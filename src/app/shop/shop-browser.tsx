@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, Coins, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import { cn, formatInt } from "@/lib/utils"
 import {
   RARITY_META,
   SHOP_CATEGORIES,
@@ -439,7 +439,7 @@ function ItemCard({
               className="size-3 text-amber-600 dark:text-amber-300"
               strokeWidth={2.25}
             />
-            {item.price.toLocaleString()}
+            {formatInt(item.price)}
           </span>
           <Button
             type="button"

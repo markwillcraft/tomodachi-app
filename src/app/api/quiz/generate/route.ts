@@ -8,6 +8,7 @@ import { getWordsWithStats } from "@/lib/stats";
 import { requireUserId } from "@/lib/auth-utils";
 import { getKanaForGroups, type KanaScript } from "@/lib/kana";
 import { N5_KANJI } from "@/lib/kanji";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -22,6 +23,11 @@ const VALID_MODES: QuizMode[] = [
 export async function POST(req: Request) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  // Read-shaped but POST so it lives in the `read` bucket — generous
+  // limit covers a real user opening multiple quiz sessions in a row.
+  const limited = await enforceRateLimit("read", userId);
+  if (limited) return limited;
 
   let body: unknown;
   try {

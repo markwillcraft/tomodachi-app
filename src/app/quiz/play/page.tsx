@@ -8,8 +8,6 @@ import {
   Clock,
   Dumbbell,
   History,
-  Loader2,
-  Sparkles,
   Trophy,
   X,
 } from "lucide-react";
@@ -22,11 +20,11 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { feedback } from "@/lib/feedback";
 import { addPracticeSession } from "@/lib/practice-history";
 import { RedoMissedButton } from "@/components/redo-missed-button";
+import { apiFetch } from "@/lib/api-client";
 
 type Question = {
   id: string;
@@ -80,8 +78,6 @@ export default function PlayPage() {
   const [picked, setPicked] = useState<number | null>(null);
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [finished, setFinished] = useState(false);
-  const [tips, setTips] = useState<string[] | null>(null);
-  const [tipsLoading, setTipsLoading] = useState(false);
   const [newlyUnlocked, setNewlyUnlocked] = useState<UnlockedAchievement[]>([]);
   const [srsOutcomes, setSrsOutcomes] = useState<SrsOutcome[]>([]);
 
@@ -177,7 +173,10 @@ export default function PlayPage() {
       return;
     }
     try {
-      const res = await fetch("/api/quiz/submit", {
+      const data = await apiFetch<{
+        newlyUnlocked?: UnlockedAchievement[];
+        srs?: SrsOutcome[];
+      }>("/api/quiz/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -193,29 +192,18 @@ export default function PlayPage() {
           })),
         }),
       });
-      if (res.ok) {
-        const data = (await res.json()) as {
-          newlyUnlocked?: UnlockedAchievement[];
-          srs?: SrsOutcome[];
-        };
-        if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
-          setNewlyUnlocked(data.newlyUnlocked);
-          feedback.correct();
-        }
-        if (Array.isArray(data.srs)) {
-          setSrsOutcomes(data.srs);
-        }
+      if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
+        setNewlyUnlocked(data.newlyUnlocked);
+        feedback.correct();
       }
-    } catch {}
-    setTipsLoading(true);
-    try {
-      const res = await fetch("/api/progress/tips", { method: "POST" });
-      const data = await res.json();
-      setTips(data.tips);
+      if (Array.isArray(data.srs)) {
+        setSrsOutcomes(data.srs);
+      }
     } catch {
-      setTips(["Could not load AI tips."]);
-    } finally {
-      setTipsLoading(false);
+      // Submit failures are non-fatal — the user still sees their
+      // results screen. Achievements + SRS will recover on the
+      // next attempt. We swallow rather than surface because the
+      // results UI doesn't have a good place to show this.
     }
   }
 
@@ -238,8 +226,6 @@ export default function PlayPage() {
         answers={answers}
         total={total}
         correct={correctCount}
-        tips={tips}
-        tipsLoading={tipsLoading}
         training={training}
         newlyUnlocked={newlyUnlocked}
         mode={mode}
@@ -402,8 +388,6 @@ function ResultsView({
   answers,
   total,
   correct,
-  tips,
-  tipsLoading,
   training,
   newlyUnlocked,
   mode,
@@ -412,8 +396,6 @@ function ResultsView({
   answers: Answer[];
   total: number;
   correct: number;
-  tips: string[] | null;
-  tipsLoading: boolean;
   training: boolean;
   newlyUnlocked: UnlockedAchievement[];
   mode: string;
@@ -532,35 +514,6 @@ function ResultsView({
                 <Link href="/achievements">View all achievements</Link>
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!training && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="size-4" />
-              AI coach
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {tipsLoading && (
-              <>
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-5/6" />
-                <Skeleton className="h-10 w-4/6" />
-              </>
-            )}
-            {tips &&
-              tips.map((t, i) => (
-                <div
-                  key={i}
-                  className="rounded-md border bg-muted/30 p-3 text-sm"
-                >
-                  {t}
-                </div>
-              ))}
           </CardContent>
         </Card>
       )}

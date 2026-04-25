@@ -2,12 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { enrichRomajiList } from "@/lib/enrich";
 import { requireUserId } from "@/lib/auth-utils";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  // Imports invoke Gemini under the hood — same `ai` bucket as
+  // /progress/tips so a script can't burst-import to rack up costs.
+  const limited = await enforceRateLimit("ai", userId);
+  if (limited) return limited;
 
   let body: unknown;
   try {

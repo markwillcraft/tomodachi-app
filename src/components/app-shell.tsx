@@ -3,7 +3,11 @@
 import { useEffect, useRef, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
+import { useTimezoneSync } from "@/lib/use-timezone-sync"
+import { NotificationBell } from "@/components/notification-bell"
+import { NotificationToastStack } from "@/components/notification-toast-stack"
+import { WelcomeToast } from "@/components/welcome-toast"
 import {
   BookMarked,
   BookOpen,
@@ -33,7 +37,7 @@ import type { LucideIcon } from "lucide-react"
 import { SignInButton, SignUpButton, UserButton } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { cn } from "@/lib/utils"
+import { cn, formatInt } from "@/lib/utils"
 
 // ---------- types ----------
 
@@ -181,7 +185,8 @@ export function AppShell({
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const pathname = usePathname()
-  const router = useRouter()
+
+  useTimezoneSync(isSignedIn)
 
   useEffect(() => {
     try {
@@ -212,69 +217,6 @@ export function AppShell({
       document.body.style.overflow = prev
     }
   }, [drawerOpen])
-
-  // Keep the server's stored timezone in sync with the user's actual
-  // browser timezone. We do a self-healing check: fetch what the server
-  // currently has and only POST when it differs. This handles the case
-  // where an unrelated upsert (e.g. toggling `autoFreezeStreak`) created
-  // a UserProfile row with the default `UTC` and the previous cache-only
-  // sync thought it was already in sync.
-  //
-  // The localStorage cache is still used as an optimization: if we've
-  // already confirmed the server matches within the last day, we skip
-  // the GET. It resets automatically when the browser tz changes.
-  useEffect(() => {
-    if (!isSignedIn) return
-    try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-      if (!tz) return
-      const cacheKey = "tomodachi_tz_synced"
-      const now = Date.now()
-      const ONE_DAY = 24 * 60 * 60 * 1000
-      try {
-        const raw = window.localStorage.getItem(cacheKey)
-        if (raw) {
-          const parsed = JSON.parse(raw) as { tz?: string; at?: number }
-          if (parsed.tz === tz && parsed.at && now - parsed.at < ONE_DAY) {
-            return
-          }
-        }
-      } catch {
-        // Malformed cache; fall through and re-sync.
-      }
-
-      void (async () => {
-        try {
-          const res = await fetch("/api/profile/preferences")
-          if (!res.ok) return
-          const prefs = (await res.json().catch(() => null)) as
-            | { timezone?: string }
-            | null
-          if (prefs?.timezone !== tz) {
-            const upd = await fetch("/api/profile/timezone", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ timezone: tz }),
-            })
-            if (!upd.ok) return
-            // Server-stored data changed — force a refresh so daily
-            // countdowns, streak calendar anchor, and quest reset times
-            // all re-render with the correct tz without requiring a
-            // manual reload.
-            router.refresh()
-          }
-          window.localStorage.setItem(
-            cacheKey,
-            JSON.stringify({ tz, at: now }),
-          )
-        } catch {
-          // Network errors are fine — we'll retry next mount.
-        }
-      })()
-    } catch {
-      // Intl unavailable in this environment; nothing to do.
-    }
-  }, [isSignedIn, router])
 
   if (!isSignedIn) {
     return (
@@ -368,6 +310,20 @@ export function AppShell({
           </div>
         </main>
       </div>
+
+      {/* Floating once-per-session greeting. Lives at shell root so it
+          pops in regardless of the landing page after sign-in, and so
+          its `position: fixed` placement is never trapped by a
+          transformed ancestor. */}
+      <WelcomeToast />
+
+      {/* Realtime mirror of the bell. Every notification that lands in
+          the bell also fires a transient toast here so the user sees
+          milestones, achievements, and quest claims the moment they
+          happen — not on the next bell-poll. Mounted at shell root so
+          the welcome toast (bottom-right) and these (top-right) never
+          fight for space. */}
+      <NotificationToastStack />
     </div>
   )
 }
@@ -427,6 +383,7 @@ function TopBar({
       {/* Right cluster never compresses — it owns its width. */}
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         {coins && <CoinChip coins={coins} />}
+        <NotificationBell />
         <ThemeToggle />
         <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
       </div>
@@ -441,8 +398,8 @@ function CoinChip({ coins }: { coins: SidebarCoins }) {
       // this on?" destination and teases the shop whenever the user
       // glances at their balance.
       href="/shop"
-      aria-label={`${coins.balance} coins · +${coins.earnedToday} today`}
-      title={`${coins.balance} coins · +${coins.earnedToday} earned today`}
+      aria-label={`${formatInt(coins.balance)} coins · +${formatInt(coins.earnedToday)} today`}
+      title={`${formatInt(coins.balance)} coins · +${formatInt(coins.earnedToday)} earned today`}
       className={cn(
         "group inline-flex h-9 items-center gap-1.5 rounded-full border px-2.5 text-sm font-semibold tabular-nums transition-colors",
         "border-amber-500/30 bg-gradient-to-br from-amber-500/15 to-orange-500/10 text-amber-700 hover:from-amber-500/25 hover:to-orange-500/15 dark:text-amber-200",
@@ -452,7 +409,7 @@ function CoinChip({ coins }: { coins: SidebarCoins }) {
         className="size-4 text-amber-600 transition-transform group-hover:scale-110 dark:text-amber-300"
         strokeWidth={2.25}
       />
-      <span>{coins.balance.toLocaleString()}</span>
+      <span>{formatInt(coins.balance)}</span>
       {coins.earnedToday > 0 && (
         <span className="hidden rounded-full bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-bold leading-none text-amber-700 dark:text-amber-200 sm:inline-block">
           +{coins.earnedToday}
@@ -560,7 +517,7 @@ function SidebarCoinsPanel({
     return (
       <div className="flex justify-center">
         <CollapsedTooltip
-          label={`${coins.balance.toLocaleString()} coins · +${coins.earnedToday} today`}
+          label={`${formatInt(coins.balance)} coins · +${formatInt(coins.earnedToday)} today`}
         >
           <Link
             href="/shop"
@@ -589,7 +546,7 @@ function SidebarCoinsPanel({
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-1">
             <span className="text-sm font-semibold tabular-nums">
-              {coins.balance.toLocaleString()}
+              {formatInt(coins.balance)}
             </span>
             <span className="text-xs text-muted-foreground">coins</span>
           </div>

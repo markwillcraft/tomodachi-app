@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUserId } from "@/lib/auth-utils";
 import { applyFreezeToDay } from "@/lib/streak-freeze";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -30,6 +31,11 @@ const REASON_MESSAGES: Record<string, string> = {
 export async function POST(req: Request) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  // Inventory-spending action — `sensitive` bucket so a script can't
+  // burn freezes faster than a human ever could.
+  const limited = await enforceRateLimit("sensitive", userId);
+  if (limited) return limited;
 
   let body: unknown;
   try {

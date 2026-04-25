@@ -6,7 +6,7 @@ import type {
   AchievementCategory,
   AchievementProgress,
 } from "@/lib/achievements";
-import { cn } from "@/lib/utils";
+import { cn, formatInt } from "@/lib/utils";
 
 type CategoryMeta = {
   label: string;
@@ -326,8 +326,8 @@ function AchievementCard({ ach }: { ach: AchievementProgress }) {
       <div className="space-y-1">
         <div className="flex items-center justify-between text-[11px] text-muted-foreground tabular-nums">
           <span>
-            {Math.min(ach.current, ach.goal).toLocaleString()} /{" "}
-            {ach.goal.toLocaleString()}
+            {formatInt(Math.min(ach.current, ach.goal))} /{" "}
+            {formatInt(ach.goal)}
           </span>
           <span>{ach.pct}%</span>
         </div>
@@ -344,7 +344,8 @@ function AchievementCard({ ach }: { ach: AchievementProgress }) {
         </div>
         {ach.unlocked && ach.unlockedAt && (
           <p className="text-[10px] text-muted-foreground">
-            Unlocked {new Date(ach.unlockedAt).toLocaleDateString()}
+            Unlocked{" "}
+            {new Date(ach.unlockedAt).toLocaleDateString("en-US")}
           </p>
         )}
       </div>

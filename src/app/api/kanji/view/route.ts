@@ -3,6 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth-utils";
 import { getKanjiByChar } from "@/lib/kanji";
 import { awardForKanjiView } from "@/lib/coins";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import {
+  maybeNotifyKanjiMilestone,
+  notifyQuestCompleted,
+  type NotificationRow,
+} from "@/lib/notify";
+import { getUserTimezone, localDayKey } from "@/lib/time";
 
 export const runtime = "nodejs";
 
@@ -15,6 +22,11 @@ const DEDUP_WINDOW_MS = 10_000;
 export async function POST(req: Request) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  // High-volume study endpoint — generous `view` bucket so audio
+  // repeat-taps and rapid grid scrolling never trip the limit.
+  const limited = await enforceRateLimit("view", userId);
+  if (limited) return limited;
 
   let body: unknown;
   try {
@@ -54,5 +66,39 @@ export async function POST(req: Request) {
 
   const view = await prisma.kanjiView.create({ data: { userId, char } });
   const coins = await awardForKanjiView(userId, view.id);
-  return NextResponse.json({ ok: true, coins });
+
+  // Daily kanji-study milestones (25 / 50 / 100). Same logic as the
+  // vocab card-view milestones — fires only when this view actually
+  // awarded a coin (so cap-hit views are silent). The freshly created
+  // rows are echoed back as `newNotifications` so `apiFetch` can pop
+  // the matching toasts on the client.
+  let newNotifications: NotificationRow[] = [];
+  if (coins.awardedAfter > coins.awardedBefore) {
+    try {
+      const tasks: Array<Promise<NotificationRow | null>> = [
+        maybeNotifyKanjiMilestone(userId, coins.awardedBefore),
+      ];
+      if (coins.claimedQuests.length > 0) {
+        const tz = await getUserTimezone(userId);
+        const day = localDayKey(new Date(), tz);
+        for (const q of coins.claimedQuests) {
+          tasks.push(
+            notifyQuestCompleted(userId, day, {
+              questId: q.id,
+              title: q.title,
+              reward: q.reward,
+            }),
+          );
+        }
+      }
+      const results = await Promise.all(tasks);
+      newNotifications = results.filter(
+        (r): r is NotificationRow => r !== null,
+      );
+    } catch {
+      // Non-blocking.
+    }
+  }
+
+  return NextResponse.json({ ok: true, coins, newNotifications });
 }

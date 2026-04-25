@@ -44,6 +44,10 @@ export function KanjiCardDeck({
 
   const logView = useCallback(async (char: string) => {
     try {
+      // Telemetry-only: stays on native `fetch` so a 429 or
+      // network error doesn't bubble into the deck UI. The state
+      // update is gated on success — if the call fails the next
+      // session will retry naturally.
       await fetch("/api/kanji/view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

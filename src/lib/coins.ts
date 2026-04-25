@@ -295,14 +295,22 @@ export async function getDailyQuests(userId: string): Promise<DailyQuest[]> {
 }
 
 // Award any newly-completed quests for today. Returns a list of
-// { id, reward } pairs that were *just* claimed (empty if nothing new).
+// { id, title, reward } triples that were *just* claimed (empty if
+// nothing new). Title is included so notification writers don't have
+// to re-lookup the catalog.
+export type ClaimedQuest = {
+  id: DailyQuestId;
+  title: string;
+  reward: number;
+};
+
 export async function claimEligibleQuests(
   userId: string,
-): Promise<Array<{ id: DailyQuestId; reward: number }>> {
+): Promise<ClaimedQuest[]> {
   const tz = await getUserTimezone(userId);
   const day = localDayKey(new Date(), tz);
   const quests = await getDailyQuests(userId);
-  const newlyClaimed: Array<{ id: DailyQuestId; reward: number }> = [];
+  const newlyClaimed: ClaimedQuest[] = [];
   for (const q of quests) {
     if (!q.completed || q.claimed) continue;
     const result = await awardCoins(
@@ -312,7 +320,7 @@ export async function claimEligibleQuests(
       `quest:${day}:${q.id}`,
     );
     if (result.awarded) {
-      newlyClaimed.push({ id: q.id, reward: q.reward });
+      newlyClaimed.push({ id: q.id, title: q.title, reward: q.reward });
     }
   }
   return newlyClaimed;
@@ -330,6 +338,11 @@ export async function claimEligibleQuests(
 export type CoinAwardSummary = {
   earned: number;
   reasons: Array<{ reason: string; amount: number }>;
+  // Daily quests that the calling action just pushed over the line.
+  // Surfaced here so notification writers (`src/lib/notify.ts`) can
+  // fire one row per newly-claimed quest without re-querying the
+  // ledger. Empty if no quest crossed.
+  claimedQuests: ClaimedQuest[];
 };
 
 function pushReason(out: CoinAwardSummary, reason: string, amount: number) {
@@ -338,13 +351,17 @@ function pushReason(out: CoinAwardSummary, reason: string, amount: number) {
   out.reasons.push({ reason, amount });
 }
 
+function emptyAward(): CoinAwardSummary {
+  return { earned: 0, reasons: [], claimedQuests: [] };
+}
+
 export async function awardForQuiz(
   userId: string,
   attemptId: number,
   total: number,
   correct: number,
 ): Promise<CoinAwardSummary> {
-  const out: CoinAwardSummary = { earned: 0, reasons: [] };
+  const out: CoinAwardSummary = emptyAward();
   const base =
     COIN_RULES.quizBase + correct * COIN_RULES.quizPerCorrect;
   const baseRes = await awardCoins(
@@ -386,14 +403,24 @@ export async function awardForQuiz(
   for (const q of quests) {
     pushReason(out, `Quest: ${q.id}`, q.reward);
   }
+  out.claimedQuests = quests;
   return out;
 }
+
+// `awardedBefore` / `awardedAfter` echo the per-day awarded-views count
+// so callers can drive milestone notifications (`maybeNotifyCardsMilestone`
+// in `notify.ts`) without re-running the same COUNT query the helper
+// already needed to enforce the daily cap.
+export type CardViewCoinAward = CoinAwardSummary & {
+  awardedBefore: number;
+  awardedAfter: number;
+};
 
 export async function awardForCardView(
   userId: string,
   cardViewId: number,
-): Promise<CoinAwardSummary> {
-  const out: CoinAwardSummary = { earned: 0, reasons: [] };
+): Promise<CardViewCoinAward> {
+  const out: CoinAwardSummary = emptyAward();
   // Cap per day: count today's card-view rewards in the ledger.
   const tz = await getUserTimezone(userId);
   const today = localMidnight(new Date(), tz);
@@ -404,6 +431,7 @@ export async function awardForCardView(
       createdAt: { gte: today },
     },
   });
+  let awardedAfter = grantedToday;
   if (grantedToday < COIN_RULES.cardViewDailyCap) {
     const r = await awardCoins(
       userId,
@@ -411,18 +439,27 @@ export async function awardForCardView(
       "card_view",
       `card:${cardViewId}`,
     );
-    if (r.awarded) pushReason(out, "Card studied", COIN_RULES.cardView);
+    if (r.awarded) {
+      pushReason(out, "Card studied", COIN_RULES.cardView);
+      awardedAfter = grantedToday + 1;
+    }
   }
   const quests = await claimEligibleQuests(userId);
   for (const q of quests) pushReason(out, `Quest: ${q.id}`, q.reward);
-  return out;
+  out.claimedQuests = quests;
+  return { ...out, awardedBefore: grantedToday, awardedAfter };
 }
+
+export type KanjiViewCoinAward = CoinAwardSummary & {
+  awardedBefore: number;
+  awardedAfter: number;
+};
 
 export async function awardForKanjiView(
   userId: string,
   kanjiViewId: number,
-): Promise<CoinAwardSummary> {
-  const out: CoinAwardSummary = { earned: 0, reasons: [] };
+): Promise<KanjiViewCoinAward> {
+  const out: CoinAwardSummary = emptyAward();
   const tz = await getUserTimezone(userId);
   const today = localMidnight(new Date(), tz);
   const grantedToday = await prisma.coinLedger.count({
@@ -432,6 +469,7 @@ export async function awardForKanjiView(
       createdAt: { gte: today },
     },
   });
+  let awardedAfter = grantedToday;
   if (grantedToday < COIN_RULES.kanjiViewDailyCap) {
     const r = await awardCoins(
       userId,
@@ -439,11 +477,15 @@ export async function awardForKanjiView(
       "kanji_view",
       `kanji:${kanjiViewId}`,
     );
-    if (r.awarded) pushReason(out, "Kanji studied", COIN_RULES.kanjiView);
+    if (r.awarded) {
+      pushReason(out, "Kanji studied", COIN_RULES.kanjiView);
+      awardedAfter = grantedToday + 1;
+    }
   }
   const quests = await claimEligibleQuests(userId);
   for (const q of quests) pushReason(out, `Quest: ${q.id}`, q.reward);
-  return out;
+  out.claimedQuests = quests;
+  return { ...out, awardedBefore: grantedToday, awardedAfter };
 }
 
 // =====================================================================
@@ -559,7 +601,7 @@ export async function awardForDojoMilestones(
   newlyPassed: boolean,
   newlyCompletedLesson: boolean,
 ): Promise<CoinAwardSummary> {
-  const out: CoinAwardSummary = { earned: 0, reasons: [] };
+  const out: CoinAwardSummary = emptyAward();
   if (newlyPassed) {
     const r = await awardCoins(
       userId,
@@ -592,7 +634,7 @@ export async function awardForKanaDrill(
   total: number,
   correct: number,
 ): Promise<CoinAwardSummary> {
-  const out: CoinAwardSummary = { earned: 0, reasons: [] };
+  const out: CoinAwardSummary = emptyAward();
   const base =
     COIN_RULES.kanaDrillBase + correct * COIN_RULES.kanaDrillPerCorrect;
   const baseRes = await awardCoins(
@@ -616,5 +658,6 @@ export async function awardForKanaDrill(
 
   const quests = await claimEligibleQuests(userId);
   for (const q of quests) pushReason(out, `Quest: ${q.id}`, q.reward);
+  out.claimedQuests = quests;
   return out;
 }

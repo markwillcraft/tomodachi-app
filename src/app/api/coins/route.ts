@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUserId } from "@/lib/auth-utils";
 import { getCoinSummary, getDailyQuests } from "@/lib/coins";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,10 @@ export const runtime = "nodejs";
 export async function GET() {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  const limited = await enforceRateLimit("read", userId);
+  if (limited) return limited;
+
   const [summary, quests] = await Promise.all([
     getCoinSummary(userId),
     getDailyQuests(userId),

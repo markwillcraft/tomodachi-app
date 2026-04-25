@@ -33,7 +33,10 @@ type SetupState = {
 
 type Phase = "setup" | "drill" | "done";
 
-const LENGTH_OPTIONS = [20, 50, 100, 200];
+const LENGTH_OPTIONS = [10, 20, 50, 100, 200];
+const DEFAULT_SELECTED_ROWS = new Set(
+  KANA_GROUPS.filter((g) => g.type === "gojuon").map((g) => g.id),
+);
 
 function shuffle<T>(arr: T[]): T[] {
   const out = [...arr];
@@ -73,7 +76,7 @@ export function KanaMuscleMemory() {
   const [phase, setPhase] = useState<Phase>("setup");
   const [setup, setSetup] = useState<SetupState>({
     script: "hiragana",
-    selected: new Set(["a", "k", "s", "t", "n"]),
+    selected: new Set(DEFAULT_SELECTED_ROWS),
     audio: true,
     length: 50,
   });
@@ -602,6 +605,37 @@ function SetupView({
   onStart: () => void;
 }) {
   const pool = useMemo(() => buildPool(setup), [setup]);
+  const selectedCount = setup.selected.size;
+  const gojuonCount = useMemo(
+    () => KANA_GROUPS.filter((g) => g.type === "gojuon").length,
+    [],
+  );
+  const dakutenCount = useMemo(
+    () => KANA_GROUPS.filter((g) => g.type === "dakuten").length,
+    [],
+  );
+  const handakutenCount = useMemo(
+    () => KANA_GROUPS.filter((g) => g.type === "handakuten").length,
+    [],
+  );
+
+  const isAllSelected = selectedCount === KANA_GROUPS.length;
+  const isBasicSelected =
+    selectedCount === gojuonCount &&
+    KANA_GROUPS.every(
+      (g) => g.type !== "gojuon" || setup.selected.has(g.id),
+    );
+  const isDakutenSelected =
+    selectedCount === dakutenCount &&
+    KANA_GROUPS.every(
+      (g) => g.type !== "dakuten" || setup.selected.has(g.id),
+    );
+  const isHandakutenSelected =
+    selectedCount === handakutenCount &&
+    KANA_GROUPS.every(
+      (g) => g.type !== "handakuten" || setup.selected.has(g.id),
+    );
+  const isNoneSelected = selectedCount === 0;
 
   function toggleGroup(id: string) {
     const next = new Set(setup.selected);
@@ -656,33 +690,37 @@ function SetupView({
           </span>
         </div>
         <div className="mb-3 flex flex-wrap gap-1.5">
-          <Button size="sm" variant="ghost" onClick={() => selectByType("all")}>
+          <Button
+            size="sm"
+            variant={isAllSelected ? "default" : "ghost"}
+            onClick={() => selectByType("all")}
+          >
             All
           </Button>
           <Button
             size="sm"
-            variant="ghost"
+            variant={isBasicSelected ? "default" : "ghost"}
             onClick={() => selectByType("gojuon")}
           >
             Basic
           </Button>
           <Button
             size="sm"
-            variant="ghost"
+            variant={isDakutenSelected ? "default" : "ghost"}
             onClick={() => selectByType("dakuten")}
           >
             Dakuten
           </Button>
           <Button
             size="sm"
-            variant="ghost"
+            variant={isHandakutenSelected ? "default" : "ghost"}
             onClick={() => selectByType("handakuten")}
           >
             Handakuten
           </Button>
           <Button
             size="sm"
-            variant="ghost"
+            variant={isNoneSelected ? "default" : "ghost"}
             onClick={() => setSetup({ ...setup, selected: new Set() })}
           >
             None

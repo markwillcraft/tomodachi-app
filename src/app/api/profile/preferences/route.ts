@@ -5,12 +5,17 @@ import {
   isValidTimezone,
   setAutoFreezeStreak,
 } from "@/lib/time";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  const limited = await enforceRateLimit("read", userId);
+  if (limited) return limited;
+
   const prefs = await getUserPreferences(userId);
   return NextResponse.json(prefs);
 }
@@ -22,6 +27,9 @@ export async function GET() {
 export async function PATCH(req: Request) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  const limited = await enforceRateLimit("write", userId);
+  if (limited) return limited;
 
   let body: unknown;
   try {

@@ -91,8 +91,8 @@ export default async function LandingPage() {
         />
         <Feature
           icon={<Clock className="size-5" />}
-          title="AI study coach"
-          desc="Gemini reads your stats and tells you which words are slowing you down."
+          title="Progress that adds up"
+          desc="Streak, coins, and accuracy trends so you can see how each session builds on the last."
         />
       </section>
     </div>

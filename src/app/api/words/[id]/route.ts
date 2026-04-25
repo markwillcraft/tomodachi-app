@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { toHiragana, toKatakana } from "wanakana";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/auth-utils";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,9 @@ export async function PATCH(
 ) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  const limited = await enforceRateLimit("write", userId);
+  if (limited) return limited;
 
   const { id: idParam } = await params;
   const id = Number(idParam);
@@ -73,6 +77,9 @@ export async function DELETE(
 ) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  const limited = await enforceRateLimit("write", userId);
+  if (limited) return limited;
 
   const { id: idParam } = await params;
   const id = Number(idParam);

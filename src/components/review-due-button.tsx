@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { BrainCircuit, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { apiErrorMessage, apiFetch } from "@/lib/api-client";
 
 type Variant = "primary" | "outline" | "ghost";
 
@@ -35,12 +36,9 @@ export function ReviewDueButton({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/study/review?limit=${limit}`);
-      if (!res.ok) {
-        setError("Could not load your review queue.");
-        return;
-      }
-      const data = (await res.json()) as { questions?: unknown };
+      const data = await apiFetch<{ questions?: unknown }>(
+        `/api/study/review?limit=${limit}`,
+      );
       if (!Array.isArray(data.questions) || data.questions.length === 0) {
         setError("Nothing due right now — come back later.");
         return;
@@ -54,8 +52,8 @@ export function ReviewDueButton({
         }),
       );
       router.push("/quiz/play");
-    } catch {
-      setError("Network error.");
+    } catch (e) {
+      setError(apiErrorMessage(e, "Could not load your review queue."));
     } finally {
       setLoading(false);
     }

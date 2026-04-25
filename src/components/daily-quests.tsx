@@ -164,29 +164,37 @@ function QuestRow({ quest }: { quest: DailyQuest }) {
   );
 }
 
+// `Date.now()` during SSR vs hydration and default `toLocaleString()` can
+// diverge; defer the clock to `useEffect` and fix the display locale.
+const COUNTDOWN_DATE_LOCALE = "en-US" as const;
+
 function ResetCountdown({ resetsAt }: { resetsAt: string }) {
   const target = useMemo(() => new Date(resetsAt).getTime(), [resetsAt]);
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
+    const tick = () => setNow(Date.now());
+    tick();
     // Update every minute — second-by-second is unnecessary noise.
-    const id = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(id);
+    const id = window.setInterval(tick, 60_000);
+    return () => clearInterval(id);
   }, []);
 
-  const remaining = Math.max(0, target - now);
+  const remaining = now == null ? 0 : Math.max(0, target - now);
   const hours = Math.floor(remaining / 3_600_000);
   const minutes = Math.floor((remaining % 3_600_000) / 60_000);
   const label =
-    hours === 0
-      ? `${minutes}m`
-      : minutes === 0
-        ? `${hours}h`
-        : `${hours}h ${minutes}m`;
+    now == null
+      ? "—"
+      : hours === 0
+        ? `${minutes}m`
+        : minutes === 0
+          ? `${hours}h`
+          : `${hours}h ${minutes}m`;
 
   return (
     <div
-      title={`Resets at ${new Date(resetsAt).toLocaleString()}`}
+      title={`Resets at ${new Date(resetsAt).toLocaleString(COUNTDOWN_DATE_LOCALE, { dateStyle: "medium", timeStyle: "short" })}`}
       className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/60 px-2.5 py-1 text-xs font-medium text-muted-foreground"
     >
       <Timer className="size-3.5" />

@@ -23,7 +23,7 @@ import {
   DashboardGreeting,
   DashboardMetaTime,
 } from "@/components/dashboard-time"
-import { cn } from "@/lib/utils"
+import { cn, formatInt } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
 
@@ -73,7 +73,7 @@ export default async function DashboardPage() {
     user?.emailAddresses[0]?.emailAddress.split("@")[0] ??
     "there"
 
-  const quizzesLabel = quizCount.toLocaleString()
+  const quizzesLabel = formatInt(quizCount)
 
   // Quest progress drives the hero's adaptive copy + CTA.
   const completedQuests = quests.filter((q) => q.completed).length
@@ -158,7 +158,7 @@ export default async function DashboardPage() {
     {
       href: "/progress",
       title: "View progress",
-      desc: "Accuracy over time, weakest words, and AI-generated tips.",
+      desc: "Accuracy over time, weakest words, and recent attempts.",
       icon: Sparkles,
       tone: "rose",
       kanji: "道",

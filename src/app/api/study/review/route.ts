@@ -10,6 +10,7 @@ import {
 import { HIRAGANA, KATAKANA, type KanaPair } from "@/lib/kana";
 import { N5_KANJI } from "@/lib/kanji";
 import { getDueItems } from "@/lib/srs";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -20,6 +21,9 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  const limited = await enforceRateLimit("read", userId);
+  if (limited) return limited;
 
   const { searchParams } = new URL(req.url);
   const rawLimit = Number(searchParams.get("limit") ?? 20);

@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireUserId } from "@/lib/auth-utils";
 import { awardForKanaDrill } from "@/lib/coins";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import {
+  notifyKanaDrillFinished,
+  notifyQuestCompleted,
+  type NotificationRow,
+} from "@/lib/notify";
+import { getUserTimezone, localDayKey } from "@/lib/time";
 
 export const runtime = "nodejs";
 
@@ -13,6 +20,9 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   const userId = await requireUserId();
   if (userId instanceof NextResponse) return userId;
+
+  const limited = await enforceRateLimit("write", userId);
+  if (limited) return limited;
 
   let body: unknown;
   try {
@@ -37,11 +47,42 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid correct count" }, { status: 400 });
   }
 
-  const coins = await awardForKanaDrill(
-    userId,
-    drillKey.slice(0, 64),
-    total,
-    correct,
-  );
-  return NextResponse.json({ ok: true, coins });
+  const safeKey = drillKey.slice(0, 64);
+  const coins = await awardForKanaDrill(userId, safeKey, total, correct);
+
+  // Self-study session ended → bell entry. Quest completions surface
+  // separately so the user sees both the session and the reward in
+  // the dropdown. All writes are idempotent so a network retry of
+  // the kana-drill POST won't produce duplicate notifications. The
+  // freshly created rows are echoed back as `newNotifications` so
+  // `apiFetch` can pop the matching toasts on the client.
+  let newNotifications: NotificationRow[] = [];
+  try {
+    const tz = await getUserTimezone(userId);
+    const day = localDayKey(new Date(), tz);
+    const tasks: Array<Promise<NotificationRow | null>> = [
+      notifyKanaDrillFinished(userId, safeKey, {
+        total,
+        correct,
+        coinsEarned: coins.earned,
+      }),
+    ];
+    for (const q of coins.claimedQuests) {
+      tasks.push(
+        notifyQuestCompleted(userId, day, {
+          questId: q.id,
+          title: q.title,
+          reward: q.reward,
+        }),
+      );
+    }
+    const results = await Promise.all(tasks);
+    newNotifications = results.filter(
+      (r): r is NotificationRow => r !== null,
+    );
+  } catch {
+    // Non-blocking.
+  }
+
+  return NextResponse.json({ ok: true, coins, newNotifications });
 }

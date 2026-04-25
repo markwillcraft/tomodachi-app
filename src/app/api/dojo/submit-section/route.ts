@@ -15,6 +15,15 @@ import {
   type DrillQuestion,
 } from "@/lib/dojo-content"
 import { findPathForLesson, type DojoSectionKind } from "@/lib/dojo"
+import { enforceRateLimit } from "@/lib/rate-limit"
+import {
+  notifyAchievementUnlocked,
+  notifyDojoLessonCompleted,
+  notifyQuestCompleted,
+  notifyQuizFinished,
+  type NotificationRow,
+} from "@/lib/notify"
+import { getUserTimezone, localDayKey } from "@/lib/time"
 
 export const runtime = "nodejs"
 
@@ -44,6 +53,12 @@ const VALID_SECTIONS: readonly DojoSectionKind[] = [
 export async function POST(req: Request) {
   const userId = await requireUserId()
   if (userId instanceof NextResponse) return userId
+
+  // Same `write` bucket as quiz/submit — dojo submissions are
+  // structurally identical (QuizAttempt + N QuestionResults + coin
+  // awards + achievement eval).
+  const limited = await enforceRateLimit("write", userId)
+  if (limited) return limited
 
   let body: Body
   try {
@@ -222,6 +237,55 @@ export async function POST(req: Request) {
   // second round trip to render its hero copy.
   const lesson = getLessonContent(lessonId)
 
+  // Fan out in-app notifications. Section-level passes don't get
+  // their own bell entry (would be 3 per lesson); we surface the
+  // attempt as a generic "quiz finished" plus the lesson-completion
+  // celebration when all three sections are now passed. The freshly
+  // created rows are echoed back so the client pops a toast for each.
+  let newNotifications: NotificationRow[] = []
+  try {
+    const tz = await getUserTimezone(userId)
+    const day = localDayKey(new Date(), tz)
+    const tasks: Array<Promise<NotificationRow | null>> = [
+      notifyQuizFinished(userId, attempt.id, { mode, total, correct }),
+    ]
+    if (sectionResult.newlyCompletedLesson) {
+      tasks.push(
+        notifyDojoLessonCompleted(userId, {
+          lessonId,
+          lessonTitle:
+            lesson?.intro?.split(/[.\n]/)[0]?.slice(0, 80) ??
+            `Lesson ${lessonId}`,
+          level: path?.level ?? "n5",
+        }),
+      )
+    }
+    for (const a of newlyUnlocked) {
+      tasks.push(
+        notifyAchievementUnlocked(userId, {
+          achievementId: a.id,
+          title: a.title,
+          icon: a.icon,
+        }),
+      )
+    }
+    for (const q of quizCoins.claimedQuests) {
+      tasks.push(
+        notifyQuestCompleted(userId, day, {
+          questId: q.id,
+          title: q.title,
+          reward: q.reward,
+        }),
+      )
+    }
+    const results = await Promise.all(tasks)
+    newNotifications = results.filter(
+      (r): r is NotificationRow => r !== null,
+    )
+  } catch {
+    // Non-blocking.
+  }
+
   return NextResponse.json({
     attemptId: attempt.id,
     score: {
@@ -243,6 +307,7 @@ export async function POST(req: Request) {
       reasons: [...quizCoins.reasons, ...milestoneCoins.reasons],
     },
     newlyUnlocked,
+    newNotifications,
     lesson: lesson
       ? { id: lesson.lessonId, intro: lesson.intro }
       : null,
