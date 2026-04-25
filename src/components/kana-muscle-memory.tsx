@@ -7,6 +7,7 @@ import {
   Keyboard,
   Pause,
   Play,
+  Repeat,
   RotateCcw,
   Settings2,
   Target,
@@ -29,6 +30,12 @@ type SetupState = {
   selected: Set<string>;
   audio: boolean;
   length: number;
+  // When true (default), a session contains each kana at most once and is
+  // capped at the pool size. When false, the sequence cycles the pool until
+  // it reaches the requested length, with no back-to-back repeats — useful
+  // for grinding muscle memory on a small pool (e.g. 50 reps over the five
+  // a/i/u/e/o kana).
+  uniqueOnly: boolean;
 };
 
 type Phase = "setup" | "drill" | "done";
@@ -66,10 +73,28 @@ function buildPool(setup: SetupState): KanaPair[] {
 function buildSequence(setup: SetupState): KanaPair[] {
   const pool = buildPool(setup);
   if (pool.length === 0) return [];
-  // Baseline run is unique-only. If requested length is larger than the pool,
-  // cap to pool size so we never duplicate kana on initial pass.
-  const targetLength = Math.min(setup.length, pool.length);
-  return shuffle(pool).slice(0, targetLength);
+  if (setup.uniqueOnly) {
+    // Unique-only run: every kana appears at most once, so a request bigger
+    // than the pool is silently capped to the pool size.
+    const targetLength = Math.min(setup.length, pool.length);
+    return shuffle(pool).slice(0, targetLength);
+  }
+  // Repetition run: cycle shuffled copies of the pool until we hit the
+  // requested length. At each block boundary, swap the new block's first
+  // entry with a later one when it would create a back-to-back repeat —
+  // a small pool (e.g. 5 kana over 50 reps) should never feel like the
+  // same character twice in a row.
+  const out: KanaPair[] = [];
+  while (out.length < setup.length) {
+    const block = shuffle(pool);
+    const last = out[out.length - 1];
+    if (last && block[0]?.kana === last.kana && block.length > 1) {
+      const swapIdx = 1 + Math.floor(Math.random() * (block.length - 1));
+      [block[0], block[swapIdx]] = [block[swapIdx], block[0]];
+    }
+    out.push(...block);
+  }
+  return out.slice(0, setup.length);
 }
 
 export function KanaMuscleMemory() {
@@ -79,6 +104,7 @@ export function KanaMuscleMemory() {
     selected: new Set(DEFAULT_SELECTED_ROWS),
     audio: true,
     length: 50,
+    uniqueOnly: true,
   });
   const [sequence, setSequence] = useState<KanaPair[]>([]);
   const [index, setIndex] = useState(0);
@@ -764,9 +790,46 @@ function SetupView({
               </Button>
             ))}
           </div>
+          <button
+            onClick={() =>
+              setSetup({ ...setup, uniqueOnly: !setup.uniqueOnly })
+            }
+            className={cn(
+              "mt-3 flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors",
+              setup.uniqueOnly
+                ? "border-input bg-card"
+                : "border-emerald-400/50 bg-emerald-500/10",
+            )}
+          >
+            <span className="flex items-center gap-2 text-sm">
+              <Repeat className="size-4" />
+              <span>
+                {setup.uniqueOnly ? "Unique-only" : "Repetition"}
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {setup.uniqueOnly
+                    ? "each kana appears at most once"
+                    : "cycle the pool, no back-to-back repeats"}
+                </span>
+              </span>
+            </span>
+            <span
+              className={cn(
+                "inline-flex h-5 w-9 items-center rounded-full p-0.5 transition-colors",
+                setup.uniqueOnly ? "bg-muted" : "bg-emerald-500",
+              )}
+            >
+              <span
+                className={cn(
+                  "size-4 rounded-full bg-white shadow transition-transform",
+                  setup.uniqueOnly ? "translate-x-0" : "translate-x-4",
+                )}
+              />
+            </span>
+          </button>
           <p className="mt-2 text-xs text-muted-foreground">
-            Unique-only run: max {pool.length} kana from your selected rows.
-            Misses are moved to the end for retry.
+            {setup.uniqueOnly
+              ? `Unique-only run: up to ${pool.length} kana from your selected rows. Misses go to the end for retry.`
+              : `Repetition run: ${setup.length} kana cycled from your ${pool.length}-kana pool. Misses go to the end for retry.`}
           </p>
         </div>
 

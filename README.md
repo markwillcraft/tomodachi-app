@@ -345,7 +345,13 @@ any surface, no curriculum on top. It has:
     romaji as kana scroll past. Setup defaults to all **basic (gojuon) rows**
     selected (instead of only five starter rows), with the **Basic** quick-filter
     tab shown as active by default, and session lengths
-    `10 / 20 / 50 / 100 / 200`. Awards coins via `/api/study/kana-drill`.
+    `10 / 20 / 50 / 100 / 200`. A **Unique-only** toggle (default on) caps a
+    session at the size of the selected pool; flip it off to enable a
+    **Repetition** run that cycles the pool up to the chosen length with no
+    back-to-back duplicates — useful for grinding 50+ reps over a tiny pool
+    like `a / i / u / e / o`. Self-study is no longer paid per-action, so
+    the drill posts to `/api/study/kana-drill` purely to feed daily quests
+    and stats — the per-drill payout itself is now `+0`.
 
 ### Quiz engine
 
@@ -446,11 +452,10 @@ Reward table (`COIN_RULES` in `src/lib/coins.ts`):
 | Per correct quiz answer | +1 |
 | ≥90% accuracy on a ≥5-question quiz | +10 |
 | 100% accuracy on a ≥5-question quiz | +20 (stacks with above) |
-| Vocab card studied | +1, capped at 50/day |
-| Kanji studied | +1, capped at 50/day |
-| Kana drill base | +5 |
-| Per correct in kana drill | +1 |
-| Perfect kana drill (≥10 questions) | +20 |
+| Vocab card studied | +0 (self-study is no longer paid per-action; daily quests still pay) |
+| Kanji studied | +0 (self-study is no longer paid per-action; daily quests still pay) |
+| Kana drill base | +0 (self-study is no longer paid per-action) |
+| Perfect kana drill (≥10 questions) | +0 (self-study is no longer paid per-action) |
 | First pass on a Dojo section (≥80%) | +25 |
 | Complete a full Dojo lesson (all 3 sections passed) | +100 |
 | Daily quests | see below |
@@ -605,11 +610,13 @@ tooling and now also delegates to `getProgressStatsForUser`.
 
 ### Shop & Inventory
 
-The cosmetics economy. Coins are earned through study (quizzes, vocab cards,
-kanji study, kana drills, daily quests) and **spent** in the Store on cosmetics
-that decorate the dashboard mascot, the home scene, and shareable progress
-screens. The intended loop is *study → earn → flex*: progression is visible,
-worth showing off, and rewarding to chase.
+The cosmetics economy. Coins are earned through quizzes, Dojo milestones,
+daily quests, and streak rewards (self-study activities like vocab cards,
+kanji study, and kana drills no longer pay per-action — they only count
+toward quests/stats), and **spent** in the Store on cosmetics that decorate
+the dashboard mascot, the home scene, and shareable progress screens. The
+intended loop is *study → earn → flex*: progression is visible, worth
+showing off, and rewarding to chase.
 
 #### Phase 1 — what ships now
 

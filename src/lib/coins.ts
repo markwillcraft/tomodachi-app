@@ -27,18 +27,26 @@ export const COIN_RULES = {
   quizPerfectBonus: 20, // 100% accuracy (stacks with the high-accuracy bonus)
   quizMinTotalForBonus: 5, // bonuses only kick in for non-trivial quizzes
 
+  // Self-study payouts (vocab cards, kanji, kana muscle-memory) are all
+  // intentionally zero. Self-study is a passive flow with no anti-farming
+  // signal, and per-action coins encouraged grinding instead of learning.
+  // Honest progress is still rewarded through daily quests, quiz coins,
+  // Dojo milestones, and streak bonuses. The fields are kept (rather than
+  // deleted) so the call sites stay intact and we can re-enable the dial
+  // if we ever change the policy.
+
   // Vocab card studied (StudyCard flip)
-  cardView: 1,
+  cardView: 0,
   cardViewDailyCap: 50,
 
   // Kanji studied
-  kanjiView: 1,
+  kanjiView: 0,
   kanjiViewDailyCap: 50,
 
   // Kana muscle-memory drill
-  kanaDrillBase: 5,
-  kanaDrillPerCorrect: 1,
-  kanaDrillPerfectBonus: 20,
+  kanaDrillBase: 0,
+  kanaDrillPerCorrect: 0,
+  kanaDrillPerfectBonus: 0,
   kanaDrillMinForBonus: 10,
 
   // Dojo milestones (per-section pass + whole-lesson completion). The
@@ -635,8 +643,9 @@ export async function awardForKanaDrill(
   correct: number,
 ): Promise<CoinAwardSummary> {
   const out: CoinAwardSummary = emptyAward();
-  const base =
-    COIN_RULES.kanaDrillBase + correct * COIN_RULES.kanaDrillPerCorrect;
+  // Flat completion payout. Per-correct multiplier was removed to
+  // prevent farming via long repetition runs on a tiny pool.
+  const base = COIN_RULES.kanaDrillBase;
   const baseRes = await awardCoins(
     userId,
     base,
