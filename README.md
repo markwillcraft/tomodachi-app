@@ -167,8 +167,11 @@ The Dojo (`/dojo`) is the *guided* counterpart to Self-study. Where
 Self-study lets the learner pick any drill freely, the Dojo walks them
 through a curated curriculum based on **Genki I + II** (3rd ed., The Japan
 Times). Lessons are grouped into JLPT paths (N5 = Genki I lessons 1–12,
-N4 = Genki II lessons 13–23) and each lesson advertises three sections:
-**Grammar**, **Vocab**, and **Listening**.
+N4 = Genki II lessons 13–23) and each lesson advertises three sections,
+in the order they're meant to be tackled: **Vocab**, **Grammar**, and
+**Listening**. Vocab leads because the kanji and example sentences in
+the Grammar drill all reuse the lesson's vocab, so familiarising
+yourself with the words first makes the grammar section land cleanly.
 
 We deliberately do **not** mix Genki and Minna no Nihongo — their grammar
 ordering, vocabulary sets, and pedagogical assumptions disagree, and
@@ -178,7 +181,7 @@ and maps cleanly to JLPT levels.
 
 - **Sensei header** — `/Dachi-sensei.png` mascot in a soft tatami spotlight
   with an in-character welcome script and roll-up totals (paths open,
-  lessons, grammar/vocab/listening counts). Sets the "you have a teacher"
+  lessons, vocab/grammar/listening counts). Sets the "you have a teacher"
   tone for the page.
 - **Path selector** — horizontal chips, one per JLPT level, with a
   per-path icon (Sparkles for N5, Trophy for N4). N5 is open from day
@@ -197,37 +200,44 @@ and maps cleanly to JLPT levels.
   vertical hierarchy: number badge + title + italic theme line at the
   top, the one-line summary as the lead, a quiet "Covers" caption with
   the highlight grammar points dot-separated, and an inline section
-  meter (icon + count for Grammar / Vocab / Listening). Cards are
+  meter (icon + count for Vocab / Grammar / Listening). Cards are
   `<Link>`s to the lesson detail route — locked lessons render as
   non-clickable dashed-border tiles instead.
 - **Lesson detail (`/dojo/[level]/[lessonId]`)** — breadcrumb (Dojo ›
   Path › Lesson N), a richer lesson header with the path badge +
   textbook reference + "You'll learn" highlight pills, then three
-  section cards (Grammar / Vocab / Listening). For lessons with live
+  section cards (Vocab / Grammar / Listening). For lessons with live
   content the cards link into the per-section **lesson view**; cards
   show progress state (best score, attempts, "Start" / "Continue" /
   "Retake" / ✓ Passed). Footer has prev / next lesson navigation.
   Locked-path lessons render the same chrome but mark every section
   as `Locked`.
 - **Section lesson view (`/dojo/[level]/[lessonId]/[section]`)** — the
-  *teaching* surface for each section. Grammar shows pattern
-  explanations, prose, and example sentences (each with a play-audio
-  button). Vocab presents a flashcard stack the user pages through
-  (front: kana/kanji + audio, flip: romaji + English). Listening lays
+  *teaching* surface for each section. Vocab presents a flashcard
+  stack the user pages through; the front face shows the headword as
+  HTML `<ruby>` when the entry ships a `furigana` segment array (so
+  for `食べる` the reader can see `た` sits over `食` and `べる` is
+  okurigana — fall-back for entries without `furigana` is the legacy
+  stacked kanji/kana layout) plus a colored per-mora romaji row
+  underneath that labels every kana with its Hepburn syllable
+  (`わ wa · た ta · し shi`), so a learner can sound the word out
+  without flipping. The flip side shows English, romaji, and
+  `kanji · kana`. Grammar shows pattern explanations, prose, and
+  example sentences (each with a play-audio button). Listening lays
   out every dialogue with a "Play audio" button and the JP / romaji /
   English transcript. The "Start drill" CTA at the bottom is **hard-
-  gated** until the user has gone through the lesson: scroll-to-bottom
-  for grammar, every flashcard visited for vocab, every dialogue
+  gated** until the user has gone through the lesson: every flashcard
+  visited for vocab, scroll-to-bottom for grammar, every dialogue
   played + scrolled to bottom for listening. Already-passed sections
   skip the gate so retakes don't force a re-read.
 - **Section drills (`/dojo/[level]/[lessonId]/[section]/drill`)** — one
   client-driven drill per kind, reached only via the lesson view's
-  "Start drill" CTA (direct URL still works). Grammar and Vocab use
+  "Start drill" CTA (direct URL still works). Vocab and Grammar use
   multiple-choice with instant feedback + per-question explanation;
   Listening renders a `ListeningCard` (Japanese line, native audio via
   `speech.ts`, optional romaji + English transcript) and asks a
   comprehension question per dialogue. Questions are shuffled
-  client-side per attempt; grammar/vocab cap at a sensible session
+  client-side per attempt; vocab/grammar cap at a sensible session
   size to keep drills bite-sized. Server **re-grades** answers against
   the canonical bank in `dojo-content.ts` so the score is tamper-proof.
   Failed results surface a "Re-read lesson" button alongside "Retake".
@@ -251,10 +261,10 @@ and maps cleanly to JLPT levels.
 
 **Curriculum coverage (live now):**
 
-| Lesson | Title | Grammar | Vocab | Listening |
+| Lesson | Title | Vocab | Grammar | Listening |
 |---:|---|---:|---:|---:|
-| N5 · 1–12 | Genki I — full N5 grammar surface | 4–5 ea. | 20–22 ea. | 4 ea. |
-| N4 · 13–23 | Genki II — full N4 grammar surface | 4 ea. | ~20 ea. | 4 ea. |
+| N5 · 1–12 | Genki I — full N5 grammar surface | 20–22 ea. | 4–5 ea. | 4 ea. |
+| N4 · 13–23 | Genki II — full N4 grammar surface | ~20 ea. | 4 ea. | 4 ea. |
 
 > N4 lessons are authored end-to-end but **drill access is gated
 > behind full N5 completion**. Locked users can still open every N4
@@ -262,12 +272,22 @@ and maps cleanly to JLPT levels.
 
 The display layer (lesson titles, highlights, section counts) lives in
 [`src/lib/dojo.ts`](src/lib/dojo.ts) with helpers `isLessonLive`,
-`findLesson`, `getPathTotals`. The **content layer** (grammar
-explanations, vocab items, listening prompts, drill banks) lives in
+`findLesson`, `getPathTotals`. The **content layer** (vocab items,
+grammar explanations, listening prompts, drill banks) lives in
 [`src/lib/dojo-content.ts`](src/lib/dojo-content.ts) — server-only,
-typed via `LessonContent` / `GrammarPoint` / `VocabItem` /
-`ListeningPrompt` / `DrillQuestion`. Server-side reads/writes for
-progress live in [`src/lib/dojo-server.ts`](src/lib/dojo-server.ts)
+typed via `LessonContent` / `VocabItem` / `FuriganaSegment` /
+`GrammarPoint` / `ListeningPrompt` / `DrillQuestion`. `VocabItem`
+carries an optional `furigana?: FuriganaSegment[]` array — opt-in
+per word — that drives the ruby segmentation on the vocab card front
+face. Words without it fall back to today's stacked kanji/kana layout
+so backfill is incremental (N5 lesson 1 is the first one fully done;
+remaining lessons have a `TODO(furigana)` comment). The kana → Hepburn
+romaji helpers used for the per-mora colored row live in
+[`src/lib/japanese-romaji.ts`](src/lib/japanese-romaji.ts)
+(`splitMora`, `kanaToRomaji`, with full hiragana + katakana coverage,
+yōon digraphs, sokuon doubling, and chōonpu handling). Server-side
+reads/writes for progress live in
+[`src/lib/dojo-server.ts`](src/lib/dojo-server.ts)
 (`getDojoProgressByLesson`, `getDojoLessonProgress`,
 `getCompletedLessonsCount`, `getDojoSectionsByKind`,
 `submitDojoSection`).
@@ -276,7 +296,7 @@ progress live in [`src/lib/dojo-server.ts`](src/lib/dojo-server.ts)
 
 ```
 DojoProgress {
-  id, userId, lessonId, section,        // section: "grammar"|"vocab"|"listening"
+  id, userId, lessonId, section,        // section: "vocab"|"grammar"|"listening"
   bestScorePct Int @default(0),         // 0..100, ratchets upward
   attempts Int @default(0),
   passedAt DateTime?,                   // first time the section hit ≥80%; never cleared
@@ -291,8 +311,8 @@ DojoProgress {
 1. Auth + validate `lessonId` / `section` against the catalog and
    `isSectionDrillable()` — coming-soon lessons are rejected.
 2. Re-grade the client's answers against the canonical drill bank.
-3. Insert a `QuizAttempt` row with `mode = "dojo_grammar" |
-   "dojo_vocab" | "dojo_listening"` so Dojo activity automatically
+3. Insert a `QuizAttempt` row with `mode = "dojo_vocab" |
+   "dojo_grammar" | "dojo_listening"` so Dojo activity automatically
    counts toward streaks, daily quests, and the standard quiz coin
    bonuses via `awardForQuiz`.
 4. Upsert `DojoProgress` via `submitDojoSection()` and compute
@@ -497,7 +517,7 @@ a stable `id` (rename = re-lock — don't), an icon, a `kind`, and a numeric
 - `cards_viewed` (counted as **distinct words** studied, not raw view counts)
 - `kanji_chars_seen` (distinct chars across all kanji-related quiz prompts)
 - `srs_mastered` (sum of all `level >= MAX_SRS_LEVEL` items)
-- `dojo_lessons_completed` (lessons whose grammar + vocab + listening sections have all been passed)
+- `dojo_lessons_completed` (lessons whose vocab + grammar + listening sections have all been passed)
 - `kana_mastered` / `kanji_mastered` / `vocab_mastered`
 - `n5_grand` (the headline; see below)
 
@@ -762,7 +782,13 @@ stays quiet on internal navigation and page reloads.
   bus drives two consumers:
   - `<NotificationToastStack/>` ([`src/components/notification-toast-stack.tsx`](src/components/notification-toast-stack.tsx))
     pops each row as a transient card under the topbar (top-right on
-    desktop, top of safe-area on mobile). Hover/focus pauses the 6s
+    desktop, top of safe-area on mobile). Visible cap is 8 so a quiz
+    finishing with several achievements + a quest claim still fits
+    without dropping the headline event. `dispatchNewNotifications`
+    iterates rows in **reverse server order**, so the trigger
+    route's headline row (`quiz_finished`, `drill_finished`, etc.)
+    ends up at the top of the visible stack and is the last thing
+    dropped if the cap is exceeded. Hover/focus pauses the 6s
     auto-dismiss; click marks the row read + navigates; X dismisses.
   - The bell subscribes to a sibling `refresh` channel, so its unread
     badge and dropdown rehydrate in the same tick the toast pops.
@@ -802,7 +828,17 @@ stays quiet on internal navigation and page reloads.
 
 - `/` topbar bell — present on every signed-in page.
 - `/notifications` — Server Component shell + `NotificationsClient`
-  island showing the latest 50 with mark-read / mark-all controls.
+  island. Renders as a real `<table>` on desktop (Type / Details /
+  When columns) and stacked cards on phones. Paginated **10 rows per
+  page** via `?page=N`, server-driven (each page is a fresh RSC
+  render — no client-side data fetching), with `Prev` / `Next` links
+  and a "Showing 11–20 of 247" indicator. Backed by
+  `getNotificationsPage()` in `src/lib/notify.ts`, which uses
+  Postgres `OFFSET / LIMIT` over the `(userId, createdAt)` index and
+  clamps out-of-range pages so a stale `?page=99` URL still renders
+  the last available page instead of a blank screen. Mark-read /
+  mark-all controls update local state optimistically and call
+  `router.refresh()` so the next navigation reflects server state.
 - The welcome toast has no route of its own; it is mounted at the root
   of the signed-in `AppShell` so it pops in regardless of the landing
   page after sign-in.
@@ -979,7 +1015,13 @@ A few patterns the codebase leans on, kept here so refactors don't undo them:
   `notification-bus.ts` — no per-call-site plumbing, no second
   `GET /api/notifications` poll required to surface the toast. The
   bus also pings the bell to refresh its unread badge in the same
-  tick, so the alert and the log entry appear in lockstep.
+  tick, so the alert and the log entry appear in lockstep. **Every
+  client-side call to a notification-emitting route MUST go through
+  `apiFetch`**, never raw `fetch()` — `apiFetch` is the only path
+  that runs the bus auto-dispatch. Self-study endpoints (`cards/view`,
+  `kanji/view`, `study/kana-drill`) were specifically migrated to
+  `apiFetch` so their daily-milestone and quest-claim notifications
+  actually pop a toast instead of silently writing to the bell only.
 - **Bell is fully event-driven, no polling.** The topbar
   `NotificationBell` only calls `GET /api/notifications` when there's
   a real reason to: once on mount, on every bus `refresh` (in-tab
@@ -1066,6 +1108,8 @@ If something on a page feels off, the source-of-truth file is usually one of:
 | Time / timezone | `src/lib/time.ts` |
 | Shop / Inventory catalog | `src/lib/shop.ts` |
 | Dojo curriculum (Genki I + II) | `src/lib/dojo.ts` |
+| Dojo lesson content (vocab + grammar + listening + drill banks; vocab `furigana` segments) | `src/lib/dojo-content.ts` |
+| Kana → Hepburn romaji helpers (mora splitter for the Dojo vocab card) | `src/lib/japanese-romaji.ts` |
 | Per-user rate limits | `src/lib/rate-limit.ts` |
 | `formatInt` (locale-stable numbers in client components) | `src/lib/utils.ts` |
 | `/progress` data shape (used by both the page and the API) | `src/lib/progress-stats.ts` |

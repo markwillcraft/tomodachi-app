@@ -33,9 +33,12 @@ import { subscribeToasts } from "@/lib/notification-bus"
 // at the bottom-right corner, so the two never collide.
 //
 // Behavior notes:
-// - Visible cap is 5 — older entries are dropped from the visible
-//   stack to avoid covering the screen during a quest cascade. They
-//   are still in the bell.
+// - Visible cap is 8 — older entries are dropped from the visible
+//   stack to avoid covering the screen during a quest cascade. The
+//   cap is set high enough that a single quiz finishing with the
+//   `quiz_finished` row + several achievement unlocks + the daily
+//   quest claim still fits without dropping the headline event.
+//   Anything dropped is still in the bell.
 // - Auto-dismiss after 6s. Hover/focus pauses the timer so a user
 //   reading a long row isn't yanked out from under them.
 // - Click X to dismiss without marking read. Click body to mark read
@@ -43,7 +46,7 @@ import { subscribeToasts } from "@/lib/notification-bus"
 //   navigate. Backed by the same `apiFetch` paths as the bell.
 // =====================================================================
 
-const VISIBLE_CAP = 5
+const VISIBLE_CAP = 8
 const DISMISS_MS = 6_000
 const EXIT_ANIM_MS = 250
 

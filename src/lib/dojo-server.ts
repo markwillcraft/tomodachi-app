@@ -48,7 +48,13 @@ export type DojoLessonProgress = {
   sections: Record<DojoSectionKind, DojoSectionProgress | null>
 }
 
-const ALL_SECTIONS: readonly DojoSectionKind[] = ["grammar", "vocab", "listening"]
+// Canonical list of section kinds, ordered the same way the lesson
+// hub renders them (vocab → grammar → listening). Order isn't
+// load-bearing — every consumer uses this purely as a set / iteration
+// source for `passedSections` counting and `includes()` validation —
+// but keeping the array in sync with the lesson hub makes the
+// codebase easier to reason about.
+const ALL_SECTIONS: readonly DojoSectionKind[] = ["vocab", "grammar", "listening"]
 
 /** Thrown by `submitDojoSection` when the lesson's path has a
  *  `prerequisite` the user hasn't satisfied yet. The API route

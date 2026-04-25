@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { KanjiStrokeDisplay } from "@/components/kanji-stroke-display";
 import { speakJapanese } from "@/lib/speech";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api-client";
 import {
   getSectionByKanji,
   type Kanji,
@@ -44,11 +45,12 @@ export function KanjiCardDeck({
 
   const logView = useCallback(async (char: string) => {
     try {
-      // Telemetry-only: stays on native `fetch` so a 429 or
-      // network error doesn't bubble into the deck UI. The state
-      // update is gated on success — if the call fails the next
-      // session will retry naturally.
-      await fetch("/api/kanji/view", {
+      // `apiFetch` so the 25/50/100 kanji-per-day milestone (and any
+      // daily quest the view completes) auto-dispatches its toast +
+      // bell-refresh through the notification bus. Failures are
+      // swallowed so a 429 / offline burst doesn't bubble into the
+      // deck UI — view logging stays best-effort.
+      await apiFetch("/api/kanji/view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ char }),

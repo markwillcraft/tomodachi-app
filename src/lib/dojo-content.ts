@@ -54,6 +54,32 @@ export type GrammarPoint = {
   drills: readonly DrillQuestion[]
 }
 
+/** One segment of a vocab word's reading, lined up so the
+ *  furigana sits over the matching kanji span. Used to render
+ *  ruby annotations on the vocab flip card so a learner can see
+ *  *which* kana belong to *which* kanji at a glance.
+ *
+ *  Examples:
+ *    食べる → [{ base: "食", reading: "た" }, { base: "べる" }]
+ *    私     → [{ base: "私", reading: "わたし" }]
+ *    日本語 → [{ base: "日本語", reading: "にほんご" }]
+ *    はい   → omit `furigana` entirely (pure kana, nothing to label)
+ *
+ *  The segment shape is intentionally loose: a `base` without a
+ *  `reading` renders as plain text in the ruby flow (used for
+ *  okurigana like べる, す, etc.). Concatenating each segment's
+ *  `base` MUST equal `kanji ?? kana` exactly — that's the
+ *  authoring contract and how we keep the ruby aligned with the
+ *  headword.
+ *
+ *  When `furigana` is omitted, the card falls back to today's
+ *  stacked layout (kanji line + kana line), so the field is
+ *  fully optional and we can backfill incrementally. */
+export type FuriganaSegment = {
+  base: string
+  reading?: string
+}
+
 export type VocabItem = {
   id: string
   kana: string
@@ -71,6 +97,11 @@ export type VocabItem = {
     | "pronoun"
     | "expression"
     | "number"
+  /** Optional ruby segmentation for the vocab flip card. See the
+   *  `FuriganaSegment` JSDoc for the authoring contract. Omit for
+   *  pure-kana words or words we haven't backfilled yet — the
+   *  card falls back to the stacked kanji/kana layout. */
+  furigana?: readonly FuriganaSegment[]
 }
 
 export type ListeningPrompt = {
@@ -307,20 +338,26 @@ const N5_L1: LessonContent = {
     { kanji: "二十歳", reading: "はたち", gloss: "20 years old (special reading)" },
     { kanji: "一歳", reading: "いっさい", gloss: "1 year old" },
   ],
+  // Furigana segmentation for the kanji-bearing entries below was
+  // backfilled in the same change that introduced the
+  // `FuriganaSegment` field. Lessons n5-l2 onward still need the
+  // same treatment — the vocab card falls back to the legacy stacked
+  // layout when `furigana` is omitted, so the gap is non-blocking.
+  // TODO(furigana): backfill n5-l2 … n5-l12 and the n4 lessons.
   vocab: [
-    { id: "n5-l1-v1", kana: "わたし", kanji: "私", romaji: "watashi", english: "I, me", partOfSpeech: "pronoun" },
+    { id: "n5-l1-v1", kana: "わたし", kanji: "私", romaji: "watashi", english: "I, me", partOfSpeech: "pronoun", furigana: [{ base: "私", reading: "わたし" }] },
     { id: "n5-l1-v2", kana: "あなた", romaji: "anata", english: "you", partOfSpeech: "pronoun" },
-    { id: "n5-l1-v3", kana: "あのひと", kanji: "あの人", romaji: "ano hito", english: "that person", partOfSpeech: "pronoun" },
-    { id: "n5-l1-v4", kana: "がくせい", kanji: "学生", romaji: "gakusei", english: "student", partOfSpeech: "noun" },
-    { id: "n5-l1-v5", kana: "せんせい", kanji: "先生", romaji: "sensei", english: "teacher", partOfSpeech: "noun" },
-    { id: "n5-l1-v6", kana: "ともだち", kanji: "友達", romaji: "tomodachi", english: "friend", partOfSpeech: "noun" },
-    { id: "n5-l1-v7", kana: "にほんじん", kanji: "日本人", romaji: "nihonjin", english: "Japanese person", partOfSpeech: "noun" },
-    { id: "n5-l1-v8", kana: "アメリカじん", kanji: "アメリカ人", romaji: "amerikajin", english: "American", partOfSpeech: "noun" },
-    { id: "n5-l1-v9", kana: "だいがく", kanji: "大学", romaji: "daigaku", english: "university", partOfSpeech: "noun" },
-    { id: "n5-l1-v10", kana: "こうこう", kanji: "高校", romaji: "koukou", english: "high school", partOfSpeech: "noun" },
-    { id: "n5-l1-v11", kana: "なん", kanji: "何", romaji: "nan", english: "what", partOfSpeech: "pronoun" },
-    { id: "n5-l1-v12", kana: "だれ", kanji: "誰", romaji: "dare", english: "who", partOfSpeech: "pronoun" },
-    { id: "n5-l1-v13", kana: "なんさい", kanji: "何歳", romaji: "nansai", english: "how old", partOfSpeech: "expression" },
+    { id: "n5-l1-v3", kana: "あのひと", kanji: "あの人", romaji: "ano hito", english: "that person", partOfSpeech: "pronoun", furigana: [{ base: "あの" }, { base: "人", reading: "ひと" }] },
+    { id: "n5-l1-v4", kana: "がくせい", kanji: "学生", romaji: "gakusei", english: "student", partOfSpeech: "noun", furigana: [{ base: "学", reading: "がく" }, { base: "生", reading: "せい" }] },
+    { id: "n5-l1-v5", kana: "せんせい", kanji: "先生", romaji: "sensei", english: "teacher", partOfSpeech: "noun", furigana: [{ base: "先", reading: "せん" }, { base: "生", reading: "せい" }] },
+    { id: "n5-l1-v6", kana: "ともだち", kanji: "友達", romaji: "tomodachi", english: "friend", partOfSpeech: "noun", furigana: [{ base: "友", reading: "とも" }, { base: "達", reading: "だち" }] },
+    { id: "n5-l1-v7", kana: "にほんじん", kanji: "日本人", romaji: "nihonjin", english: "Japanese person", partOfSpeech: "noun", furigana: [{ base: "日", reading: "に" }, { base: "本", reading: "ほん" }, { base: "人", reading: "じん" }] },
+    { id: "n5-l1-v8", kana: "アメリカじん", kanji: "アメリカ人", romaji: "amerikajin", english: "American", partOfSpeech: "noun", furigana: [{ base: "アメリカ" }, { base: "人", reading: "じん" }] },
+    { id: "n5-l1-v9", kana: "だいがく", kanji: "大学", romaji: "daigaku", english: "university", partOfSpeech: "noun", furigana: [{ base: "大", reading: "だい" }, { base: "学", reading: "がく" }] },
+    { id: "n5-l1-v10", kana: "こうこう", kanji: "高校", romaji: "koukou", english: "high school", partOfSpeech: "noun", furigana: [{ base: "高", reading: "こう" }, { base: "校", reading: "こう" }] },
+    { id: "n5-l1-v11", kana: "なん", kanji: "何", romaji: "nan", english: "what", partOfSpeech: "pronoun", furigana: [{ base: "何", reading: "なん" }] },
+    { id: "n5-l1-v12", kana: "だれ", kanji: "誰", romaji: "dare", english: "who", partOfSpeech: "pronoun", furigana: [{ base: "誰", reading: "だれ" }] },
+    { id: "n5-l1-v13", kana: "なんさい", kanji: "何歳", romaji: "nansai", english: "how old", partOfSpeech: "expression", furigana: [{ base: "何", reading: "なん" }, { base: "歳", reading: "さい" }] },
     { id: "n5-l1-v14", kana: "はい", romaji: "hai", english: "yes", partOfSpeech: "expression" },
     { id: "n5-l1-v15", kana: "いいえ", romaji: "iie", english: "no", partOfSpeech: "expression" },
     { id: "n5-l1-v16", kana: "はじめまして", romaji: "hajimemashite", english: "nice to meet you (first time)", partOfSpeech: "expression" },

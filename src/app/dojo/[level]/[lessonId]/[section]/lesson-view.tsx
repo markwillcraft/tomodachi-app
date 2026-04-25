@@ -39,8 +39,10 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { speakJapanese } from "@/lib/speech"
+import { kanaToRomaji, splitMora } from "@/lib/japanese-romaji"
 import type { DojoSectionKind } from "@/lib/dojo"
 import type {
+  FuriganaSegment,
   GrammarKeyKanji,
   GrammarPoint,
   ListeningPrompt,
@@ -932,12 +934,7 @@ function VocabFlashcards({
 
         {!flipped ? (
           <>
-            <p className="text-4xl font-semibold tracking-tight sm:text-5xl">
-              {item.kanji ?? item.kana}
-            </p>
-            {item.kanji && (
-              <p className="text-base text-muted-foreground">{item.kana}</p>
-            )}
+            <VocabReading item={item} />
             <span
               role="button"
               tabIndex={0}
@@ -1016,6 +1013,107 @@ function VocabFlashcards({
       <p className="text-center text-[11px] text-muted-foreground sm:hidden">
         Swipe left / right to switch · tap card to flip
       </p>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// Vocab card front — kanji ↔ reading display
+// ---------------------------------------------------------------------
+// Two complementary visual aids on the front face:
+//
+//   1. Headword line. If the vocab item ships a `furigana` segment
+//      array we render it as native HTML <ruby> so each kana span
+//      sits directly above the kanji it spells. Words without
+//      `furigana` (most of the catalog right now — see
+//      `dojo-content.ts`) fall back to the legacy stacked layout
+//      (kanji on top, kana below as a secondary line) so existing
+//      content keeps working unchanged.
+//
+//   2. Per-mora colored romaji. ALWAYS shown, even when furigana is
+//      present. This is the part that answers the user-facing
+//      question "which kana is wa, which is ta, which is shi?" —
+//      each mora gets its own colored cell with the kana char on
+//      top and the romaji syllable underneath. Color cycles through
+//      five tones so adjacent mora are always distinguishable; we
+//      avoid amber to keep contrast against the card's amber hover
+//      tint.
+
+const MORA_COLORS = [
+  "text-rose-500 dark:text-rose-300",
+  "text-sky-500 dark:text-sky-300",
+  "text-emerald-500 dark:text-emerald-300",
+  "text-violet-500 dark:text-violet-300",
+  "text-fuchsia-500 dark:text-fuchsia-300",
+] as const
+
+function VocabReading({ item }: { item: VocabItem }) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      {item.furigana && item.furigana.length > 0 ? (
+        <RubyHeadword segments={item.furigana} />
+      ) : (
+        <>
+          <p className="text-4xl font-semibold tracking-tight sm:text-5xl">
+            {item.kanji ?? item.kana}
+          </p>
+          {item.kanji && (
+            <p className="text-base text-muted-foreground">{item.kana}</p>
+          )}
+        </>
+      )}
+      <MoraRomajiRow kana={item.kana} />
+    </div>
+  )
+}
+
+function RubyHeadword({ segments }: { segments: readonly FuriganaSegment[] }) {
+  // `[&_rt]` styles the browser-native ruby annotation slot so the
+  // furigana stays small and muted relative to the base kanji while
+  // keeping native ruby positioning + accessibility (screen readers
+  // announce base then rt).
+  return (
+    <p className="flex flex-wrap items-end justify-center gap-x-1 text-4xl font-semibold tracking-tight sm:text-5xl [&_rt]:text-[0.32em] [&_rt]:font-medium [&_rt]:text-muted-foreground [&_rt]:tracking-wide">
+      {segments.map((seg, i) =>
+        seg.reading ? (
+          <ruby key={i}>
+            {seg.base}
+            <rt>{seg.reading}</rt>
+          </ruby>
+        ) : (
+          <span key={i}>{seg.base}</span>
+        ),
+      )}
+    </p>
+  )
+}
+
+function MoraRomajiRow({ kana }: { kana: string }) {
+  const mora = splitMora(kana)
+  if (mora.length === 0) return null
+  return (
+    <div
+      role="presentation"
+      className="mt-1 flex flex-wrap items-end justify-center gap-x-2 gap-y-1"
+    >
+      {mora.map((m, i) => {
+        const tone = MORA_COLORS[i % MORA_COLORS.length]
+        const romaji = kanaToRomaji(m)
+        return (
+          <span
+            key={`${i}-${m}`}
+            className={cn(
+              "flex flex-col items-center leading-none",
+              tone,
+            )}
+          >
+            <span className="text-base font-medium sm:text-lg">{m}</span>
+            <span className="mt-0.5 text-[10px] font-bold uppercase tracking-wider opacity-80">
+              {romaji}
+            </span>
+          </span>
+        )
+      })}
     </div>
   )
 }

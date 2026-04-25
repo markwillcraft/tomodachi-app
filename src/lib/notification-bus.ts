@@ -127,12 +127,20 @@ export function emitRefresh(): void {
  * the bell to refresh its unread count, and notify other tabs so
  * their bells stay in sync. Safe to call with an empty array — it's
  * a no-op in that case.
+ *
+ * Rows are emitted in REVERSE server order. Trigger routes return
+ * notifications headline-first (e.g. `quiz_finished`, then the
+ * achievements + quests it triggered), and the toast stack prepends
+ * each emit, so iterating in reverse here puts the headline event
+ * on top of the visible stack and the supporting events below — and
+ * keeps the headline from being the first one dropped if the visible
+ * cap is exceeded.
  */
 export function dispatchNewNotifications(
   rows: readonly NotificationRow[] | null | undefined,
 ): void {
   if (!rows || rows.length === 0) return
-  for (const row of rows) emitToast(row)
+  for (let i = rows.length - 1; i >= 0; i -= 1) emitToast(rows[i])
   emitRefresh()
 }
 

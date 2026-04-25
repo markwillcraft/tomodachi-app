@@ -141,13 +141,14 @@ export function StudyCardDeck({
     seenThisSession.current.add(wordId);
     setLogging(true);
     try {
-      // Telemetry-only: deliberately stays on native `fetch` because
-      // we don't want a 429 here to throw and clutter the console
-      // (the call is fire-and-forget; the only consequence is the
-      // mastery modal not advancing this card to "Started" until
-      // the user re-views). The session-level dedup means we won't
-      // hammer the endpoint either way.
-      await fetch("/api/cards/view", {
+      // `apiFetch` so the 25/50/100 vocab milestone (and any daily
+      // quest the view completes) auto-dispatches its toast +
+      // bell-refresh through the notification bus. We still swallow
+      // failures (including 429s) so a rate-limited or offline
+      // burst doesn't break the study UI — the only consequence is
+      // the mastery modal not advancing this card to "Started"
+      // until the user re-views.
+      await apiFetch("/api/cards/view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ wordId }),

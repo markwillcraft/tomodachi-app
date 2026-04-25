@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api-client";
 import {
   HIRAGANA,
   KATAKANA,
@@ -240,6 +241,10 @@ export function KanaMuscleMemory() {
   }, [phase, paused]);
 
   // Report drill completion exactly once per attempt to mint coins.
+  // Uses `apiFetch` so the "Drill complete" notification (and any
+  // daily quest the drill completes) auto-dispatches its toast +
+  // bell-refresh through the notification bus. Errors stay swallowed
+  // — coin minting and notifications are both best-effort here.
   useEffect(() => {
     if (phase !== "done") return;
     if (!drillKeyRef.current) return;
@@ -247,7 +252,7 @@ export function KanaMuscleMemory() {
     reportedRef.current = drillKeyRef.current;
     const total = correctCount + wrongCount;
     if (total === 0) return;
-    fetch("/api/study/kana-drill", {
+    apiFetch<{ coins?: { earned?: number } }>("/api/study/kana-drill", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -256,8 +261,7 @@ export function KanaMuscleMemory() {
         correct: correctCount,
       }),
     })
-      .then((r) => r.json())
-      .then((data: { coins?: { earned?: number } }) => {
+      .then((data) => {
         if (typeof data?.coins?.earned === "number") {
           setCoinsEarned(data.coins.earned);
         }

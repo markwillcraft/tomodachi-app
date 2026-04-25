@@ -181,8 +181,8 @@ const N5_LESSONS: readonly DojoLesson[] = [
     highlights: ["X wa Y desu", "Question marker か", "Numbers 1–100"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -196,8 +196,8 @@ const N5_LESSONS: readonly DojoLesson[] = [
     highlights: ["これ・それ・あれ", "Particles の", "Prices in 円"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 5, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 5, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -211,8 +211,8 @@ const N5_LESSONS: readonly DojoLesson[] = [
     highlights: ["-masu / -masen", "Particles を・で・に", "Time expressions"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 5, status: "live" },
       { kind: "vocab", count: 22, status: "live" },
+      { kind: "grammar", count: 5, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -226,8 +226,8 @@ const N5_LESSONS: readonly DojoLesson[] = [
     highlights: ["Past -mashita", "X ga arimasu / imasu", "Position words"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 22, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -241,8 +241,8 @@ const N5_LESSONS: readonly DojoLesson[] = [
     highlights: ["い-adj / な-adj", "好きです / 嫌いです", "-mashou suggestions"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 22, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -256,8 +256,8 @@ const N5_LESSONS: readonly DojoLesson[] = [
     highlights: ["て-form", "-te kudasai", "-te mo ii desu"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -271,8 +271,8 @@ const N5_LESSONS: readonly DojoLesson[] = [
     highlights: ["-te imasu", "Family terms", "Describing people"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 22, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -286,8 +286,8 @@ const N5_LESSONS: readonly DojoLesson[] = [
     highlights: ["Short form (verbs)", "Short form (adjectives)", "と思います"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 22, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -301,8 +301,8 @@ const N5_LESSONS: readonly DojoLesson[] = [
     highlights: ["Past short form", "と言っていました", "もう / まだ"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -316,8 +316,8 @@ const N5_LESSONS: readonly DojoLesson[] = [
     highlights: ["A より B / 一番", "つもりです", "なる (to become)"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 22, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -331,8 +331,8 @@ const N5_LESSONS: readonly DojoLesson[] = [
     highlights: ["-たい (want to)", "-たり…-たり", "ことがあります"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -346,8 +346,8 @@ const N5_LESSONS: readonly DojoLesson[] = [
     highlights: ["-nakereba ikemasen", "んです explanation", "-sugiru"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 22, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -364,8 +364,8 @@ const N4_LESSONS: readonly DojoLesson[] = [
     highlights: ["Potential form", "見える / 聞こえる", "しか…ない"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -379,8 +379,8 @@ const N4_LESSONS: readonly DojoLesson[] = [
     highlights: ["あげる / くれる / もらう", "-te ageru / kureru", "Conditional たら"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -394,8 +394,8 @@ const N4_LESSONS: readonly DojoLesson[] = [
     highlights: ["Volitional", "-you to omou", "Conditional ば"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -409,8 +409,8 @@ const N4_LESSONS: readonly DojoLesson[] = [
     highlights: ["-te miru", "-te shimau", "-te oku"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -424,8 +424,8 @@ const N4_LESSONS: readonly DojoLesson[] = [
     highlights: ["-sou desu (hearsay)", "-rashii", "-te hoshii"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -439,8 +439,8 @@ const N4_LESSONS: readonly DojoLesson[] = [
     highlights: ["他動詞 vs 自動詞", "-te aru", "-nagara"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -454,8 +454,8 @@ const N4_LESSONS: readonly DojoLesson[] = [
     highlights: ["お〜になる", "Honorific verbs", "いらっしゃる"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -469,8 +469,8 @@ const N4_LESSONS: readonly DojoLesson[] = [
     highlights: ["お〜する", "申す / 参る", "ございます"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -484,8 +484,8 @@ const N4_LESSONS: readonly DojoLesson[] = [
     highlights: ["Passive form", "ので", "〜方"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -499,8 +499,8 @@ const N4_LESSONS: readonly DojoLesson[] = [
     highlights: ["Causative", "〜させてください", "ように・ために"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },
@@ -514,8 +514,8 @@ const N4_LESSONS: readonly DojoLesson[] = [
     highlights: ["Causative-passive", "〜やすい / にくい", "〜ば〜ほど"],
     status: "available",
     sections: [
-      { kind: "grammar", count: 4, status: "live" },
       { kind: "vocab", count: 20, status: "live" },
+      { kind: "grammar", count: 4, status: "live" },
       { kind: "listening", count: 4, status: "live" },
     ],
   },

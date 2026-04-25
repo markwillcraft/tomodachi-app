@@ -350,8 +350,12 @@ export type NotificationListing = {
 
 /**
  * Fetch the user's latest notifications + their unread count in one
- * round trip. The bell dropdown asks for ~10; the full /notifications
- * page asks for 50.
+ * round trip. Used by the bell dropdown (10 most recent).
+ *
+ * For the full history page that paginates over potentially
+ * thousands of rows, use `getNotificationsPage()` instead — it
+ * returns a `total` so the UI can render page controls and a
+ * "Page X of Y" indicator without a second query.
  */
 export async function getNotifications(
   userId: string,
@@ -383,6 +387,87 @@ export async function getNotifications(
       readAt: r.readAt ? r.readAt.toISOString() : null,
       createdAt: r.createdAt.toISOString(),
     })),
+    unreadCount,
+  };
+}
+
+// Pagination defaults for the /notifications history page. Kept here
+// so the page component, the client island, and the URL helper all
+// agree on the same numbers.
+export const NOTIFICATIONS_PER_PAGE = 10;
+export const NOTIFICATIONS_MAX_PER_PAGE = 50;
+
+export type NotificationPage = {
+  notifications: NotificationRow[];
+  // 1-indexed page the result is for, after clamping. So if the
+  // caller asked for page 9999 but only 3 pages exist, this is `3`.
+  page: number;
+  perPage: number;
+  // Total rows for the user across all pages. Lets the UI render
+  // "Showing 21–30 of 247" without a second query.
+  total: number;
+  totalPages: number;
+  unreadCount: number;
+};
+
+/**
+ * Paginated reader for the /notifications history page. Offset
+ * pagination (skip / take) — fine for our row volume since every
+ * page lookup is bounded by `(userId, createdAt desc)` which is
+ * indexed, and the user's total notification count is naturally
+ * capped by their own activity.
+ *
+ * Clamps page out-of-range to the last available page so a stale
+ * URL (e.g. `?page=99` after deleting many rows) still renders
+ * something useful instead of a blank screen.
+ */
+export async function getNotificationsPage(
+  userId: string,
+  opts: { page?: number; perPage?: number } = {},
+): Promise<NotificationPage> {
+  const perPage = Math.min(
+    NOTIFICATIONS_MAX_PER_PAGE,
+    Math.max(1, Math.floor(opts.perPage ?? NOTIFICATIONS_PER_PAGE)),
+  );
+  const requestedPage = Math.max(1, Math.floor(opts.page ?? 1));
+
+  const [total, unreadCount] = await Promise.all([
+    prisma.notification.count({ where: { userId } }),
+    prisma.notification.count({ where: { userId, readAt: null } }),
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  const page = Math.min(requestedPage, totalPages);
+  const skip = (page - 1) * perPage;
+
+  const rows = total === 0
+    ? []
+    : await prisma.notification.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: perPage,
+        select: {
+          id: true,
+          kind: true,
+          payload: true,
+          readAt: true,
+          createdAt: true,
+        },
+      });
+
+  return {
+    notifications: rows.map((r) => ({
+      id: r.id,
+      kind: r.kind as NotificationKind,
+      payload: r.payload as unknown as NotificationPayload,
+      readAt: r.readAt ? r.readAt.toISOString() : null,
+      createdAt: r.createdAt.toISOString(),
+    })),
+    page,
+    perPage,
+    total,
+    totalPages,
     unreadCount,
   };
 }
