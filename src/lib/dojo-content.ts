@@ -6469,3 +6469,39 @@ function swap<T>(arr: T[], i: number, j: number): T[] {
   ;[copy[i], copy[j]] = [copy[j], copy[i]]
   return copy
 }
+
+/**
+ * Deterministic Fisher–Yates shuffle of `[0..n-1]`. Seeded by `runKey` so
+ * the same key always yields the same order (for client + server).
+ */
+function shufflePermutationIndices(n: number, runKey: string): number[] {
+  const arr = Array.from({ length: n }, (_, i) => i)
+  let s = hashString(runKey)
+  for (let i = n - 1; i > 0; i--) {
+    s = (s * 9301 + 49297) % 233280
+    const j = Math.floor((s / 233280) * (i + 1))
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
+
+/**
+ * Grammar and listening `DrillQuestion` rows in `LESSON_CONTENT` are authored
+ * with the correct choice always in `choices[0]` and `correctIndex: 0`. Vocab
+ * drills are already shuffled in `getSectionDrills` — do not call this for
+ * those. For grammar/listening, run this in the drill UI (and the submit
+ * route with the same `runKey` + `drillSeed`) so the right answer is not
+ * always option "A" while re-grades stay in sync.
+ */
+export function shuffleDrillQuestionChoices(
+  q: DrillQuestion,
+  runKey: string,
+): DrillQuestion {
+  const n = q.choices.length
+  if (n < 2) return q
+  const perm = shufflePermutationIndices(n, runKey)
+  const newChoices = perm.map((i) => q.choices[i])
+  const newCorrectIndex = perm.indexOf(q.correctIndex)
+  if (newCorrectIndex < 0) return q
+  return { ...q, choices: newChoices, correctIndex: newCorrectIndex }
+}

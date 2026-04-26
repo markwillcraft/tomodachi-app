@@ -35,9 +35,10 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { speakJapanese } from "@/lib/speech"
 import { apiErrorMessage, apiFetch } from "@/lib/api-client"
-import type {
-  DrillQuestion,
-  ListeningPrompt,
+import {
+  shuffleDrillQuestionChoices,
+  type DrillQuestion,
+  type ListeningPrompt,
 } from "@/lib/dojo-content"
 import type { DojoLevel, DojoSectionKind } from "@/lib/dojo"
 import {
@@ -53,6 +54,8 @@ const PER_ATTEMPT_CAP: Record<DojoSectionKind, number> = {
   vocab: 12,
   listening: 8,
 }
+
+const CHOICE_LETTERS = ["A", "B", "C", "D"] as const
 
 type Answer = {
   questionId: string
@@ -195,6 +198,7 @@ export function DrillRunner(props: DrillRunnerProps) {
           body: JSON.stringify({
             lessonId,
             section,
+            drillSeed: seed,
             answers: finalAnswers.map((a) => ({
               questionId: a.questionId,
               pickedIndex: a.pickedIndex,
@@ -316,7 +320,14 @@ export function DrillRunner(props: DrillRunnerProps) {
                     "border-rose-500/60 bg-rose-500/10 text-rose-900 dark:text-rose-100",
                 )}
               >
-                <span className="flex-1 text-left">{choice}</span>
+                <span className="flex min-w-0 flex-1 items-start gap-2.5 text-left">
+                  {idx < CHOICE_LETTERS.length && (
+                    <span className="w-4 shrink-0 text-right text-xs font-bold tabular-nums text-muted-foreground sm:w-5">
+                      {CHOICE_LETTERS[idx]}.
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">{choice}</span>
+                </span>
                 {showCorrect && (
                   <Check className="size-4 text-emerald-600" strokeWidth={3} />
                 )}
@@ -559,11 +570,23 @@ function ResultsView({
                 <p className="text-xs font-medium leading-snug">{q.prompt}</p>
                 {!a.isCorrect && (
                   <p className="text-[11px] text-rose-700 dark:text-rose-300">
-                    You picked: <span className="font-medium">{pickedText}</span>
+                    You picked:{" "}
+                    <span className="font-medium">
+                      {a.pickedIndex < CHOICE_LETTERS.length
+                        ? `${CHOICE_LETTERS[a.pickedIndex]}. `
+                        : ""}
+                      {pickedText}
+                    </span>
                   </p>
                 )}
                 <p className="text-[11px] text-muted-foreground">
-                  Correct: <span className="font-medium text-foreground">{correctText}</span>
+                  Correct:{" "}
+                  <span className="font-medium text-foreground">
+                    {q.correctIndex < CHOICE_LETTERS.length
+                      ? `${CHOICE_LETTERS[q.correctIndex]}. `
+                      : ""}
+                    {correctText}
+                  </span>
                 </p>
               </div>
             </li>
@@ -599,6 +622,22 @@ function buildDrillRun(
   listening: readonly ListeningPrompt[],
   seed: number,
 ): DrillItem[] {
+  // Grammar + listening content authors put the right answer in
+  // `choices[0]` with `correctIndex: 0` for every row — without a
+  // permute step the on-screen "correct" is always the first (A)
+  // option. Vocab is already shuffled in `getSectionDrills` — do not
+  // permute again here. The same `seed` (retake counter) and section
+  // string must be sent as `drillSeed` to `POST /api/dojo/submit-section`
+  // so the server can apply the *identical* order when re-grading
+  // `pickedIndex` against the canonical bank.
+  const withChoiceOrder = (q: DrillQuestion) =>
+    section === "vocab"
+      ? q
+      : shuffleDrillQuestionChoices(
+          q,
+          section === "grammar" ? `grammar:${seed}` : `listening:${seed}`,
+        )
+
   if (section === "listening") {
     // Listening's "questions" are the comprehension Qs already pulled
     // from prompts on the server. Match them back up by id so we can
@@ -607,14 +646,14 @@ function buildDrillRun(
     for (const p of listening) promptById.set(p.question.id, p)
     const items: DrillItem[] = questions.map((q) => ({
       kind: "listening",
-      question: q,
+      question: withChoiceOrder(q),
       prompt: promptById.get(q.id) ?? null,
     }))
     return takeShuffled(items, PER_ATTEMPT_CAP.listening, seed)
   }
   const items: DrillItem[] = questions.map((q) => ({
     kind: "question",
-    question: q,
+    question: withChoiceOrder(q),
     prompt: null,
   }))
   return takeShuffled(items, PER_ATTEMPT_CAP[section], seed)

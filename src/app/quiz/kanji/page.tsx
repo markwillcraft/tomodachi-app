@@ -63,16 +63,17 @@ export default function KanjiQuizSetupPage() {
     setError(null);
     try {
       const sendingAll = subsetChars.length === N5_KANJI.length;
+      const generateBody = {
+        count,
+        mode: "kanji" as const,
+        kanjiChars: sendingAll ? undefined : subsetChars,
+      };
       const data = await apiFetch<{ questions: unknown[] }>(
         "/api/quiz/generate",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            count,
-            mode: "kanji",
-            kanjiChars: sendingAll ? undefined : subsetChars,
-          }),
+          body: JSON.stringify(generateBody),
         },
       );
       sessionStorage.setItem(
@@ -81,6 +82,12 @@ export default function KanjiQuizSetupPage() {
           mode: "kanji",
           questions: data.questions,
           training: sessionMode === "training",
+          generate: {
+            method: "POST",
+            url: "/api/quiz/generate",
+            body: generateBody,
+          },
+          consumed: false,
         }),
       );
       router.push("/quiz/play");

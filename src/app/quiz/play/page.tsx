@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -24,7 +25,7 @@ import { cn } from "@/lib/utils";
 import { feedback } from "@/lib/feedback";
 import { addPracticeSession } from "@/lib/practice-history";
 import { RedoMissedButton } from "@/components/redo-missed-button";
-import { apiFetch } from "@/lib/api-client";
+import { apiErrorMessage, apiFetch } from "@/lib/api-client";
 
 type Question = {
   id: string;
@@ -63,6 +64,25 @@ type SrsOutcome = {
   totalSeen: number;
 };
 
+type QuizGenerateRequest =
+  | {
+      method: "POST";
+      url: "/api/quiz/generate";
+      body: Record<string, unknown>;
+    }
+  | {
+      method: "GET";
+      url: string;
+    };
+
+type QuizCache = {
+  mode: string;
+  questions: Question[];
+  training?: boolean;
+  generate?: QuizGenerateRequest;
+  consumed?: boolean;
+};
+
 const LETTERS = ["A", "B", "C", "D"];
 
 function formatMs(ms: number): string {
@@ -71,6 +91,7 @@ function formatMs(ms: number): string {
 }
 
 export default function PlayPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<string>("vocab");
   const [training, setTraining] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -80,6 +101,7 @@ export default function PlayPage() {
   const [finished, setFinished] = useState(false);
   const [newlyUnlocked, setNewlyUnlocked] = useState<UnlockedAchievement[]>([]);
   const [srsOutcomes, setSrsOutcomes] = useState<SrsOutcome[]>([]);
+  const [bootError, setBootError] = useState<string | null>(null);
 
   // Per-question timer. We capture the timestamp the question rendered and
   // diff against the moment the user picks an answer. In training mode we
@@ -87,21 +109,81 @@ export default function PlayPage() {
   // the results screen) but never display it mid-quiz.
   const questionStartRef = useRef<number>(Date.now());
   const sessionStartRef = useRef<number>(Date.now());
+  const initRef = useRef(false);
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
     const raw = sessionStorage.getItem("quiz");
     if (!raw) return;
-    const parsed = JSON.parse(raw) as {
-      mode: string;
-      questions: Question[];
-      training?: boolean;
-    };
+    let parsed: QuizCache;
+    try {
+      parsed = JSON.parse(raw) as QuizCache;
+    } catch {
+      sessionStorage.removeItem("quiz");
+      router.replace("/quiz");
+      return;
+    }
     setMode(parsed.mode);
-    setQuestions(parsed.questions);
     setTraining(Boolean(parsed.training));
     sessionStartRef.current = Date.now();
-  }, []);
+    if (!Array.isArray(parsed.questions)) {
+      sessionStorage.removeItem("quiz");
+      router.replace("/quiz");
+      return;
+    }
+    if (!parsed.consumed) {
+      setQuestions(parsed.questions);
+      sessionStorage.setItem(
+        "quiz",
+        JSON.stringify({ ...parsed, consumed: true }),
+      );
+      return;
+    }
+    if (!parsed.generate) {
+      sessionStorage.removeItem("quiz");
+      router.replace("/quiz");
+      return;
+    }
+    const generate = parsed.generate;
+    let active = true;
+    (async () => {
+      try {
+        const data =
+          generate.method === "POST"
+            ? await apiFetch<{ questions: Question[] }>(generate.url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(generate.body),
+              })
+            : await apiFetch<{ questions: Question[] }>(generate.url);
+        if (!active) return;
+        if (!Array.isArray(data.questions) || data.questions.length === 0) {
+          sessionStorage.removeItem("quiz");
+          router.replace("/quiz");
+          return;
+        }
+        sessionStorage.setItem(
+          "quiz",
+          JSON.stringify({
+            ...parsed,
+            questions: data.questions,
+            consumed: true,
+          }),
+        );
+        setQuestions(data.questions);
+      } catch (e) {
+        if (!active) return;
+        setBootError(apiErrorMessage(e, "Couldn't reload quiz."));
+        sessionStorage.removeItem("quiz");
+        router.replace("/quiz");
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [router]);
 
   // Reset timer whenever a new question shows up. Skip the per-question
   // ticker entirely in training mode — there's no time pressure.
@@ -170,6 +252,7 @@ export default function PlayPage() {
         wrong: results.length - correct,
         kinds,
       });
+      sessionStorage.removeItem("quiz");
       return;
     }
     try {
@@ -192,6 +275,7 @@ export default function PlayPage() {
           })),
         }),
       });
+      sessionStorage.removeItem("quiz");
       if (data.newlyUnlocked && data.newlyUnlocked.length > 0) {
         setNewlyUnlocked(data.newlyUnlocked);
         feedback.correct();
@@ -211,7 +295,9 @@ export default function PlayPage() {
     return (
       <Card>
         <CardContent className="py-10 text-center space-y-4">
-          <p className="text-muted-foreground">No quiz loaded.</p>
+          <p className="text-muted-foreground">
+            {bootError ?? "No quiz loaded."}
+          </p>
           <Button asChild>
             <Link href="/quiz">Set up a quiz</Link>
           </Button>

@@ -56,6 +56,11 @@ export function RedoMissedButton({
           mode: "redo",
           questions: data.questions,
           training: false,
+          generate: {
+            method: "GET",
+            url: `/api/quiz/redo-missed?limit=${limit}`,
+          },
+          consumed: false,
         }),
       );
       router.push("/quiz/play");

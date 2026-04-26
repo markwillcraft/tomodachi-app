@@ -12,6 +12,7 @@ import {
 import {
   getSectionDrills,
   getLessonContent,
+  shuffleDrillQuestionChoices,
   type DrillQuestion,
 } from "@/lib/dojo-content"
 import { findPathForLesson, type DojoSectionKind } from "@/lib/dojo"
@@ -41,6 +42,10 @@ type SubmittedAnswer = {
 type Body = {
   lessonId?: string
   section?: DojoSectionKind
+  /** Must match the drill client’s `useState(0)` seed + retakes. Used to
+   *  permute grammar/listening choices identically to `drill-runner.tsx` so
+   *  `pickedIndex` re-grades correctly (content authors use `correctIndex: 0`). */
+  drillSeed?: number
   answers?: SubmittedAnswer[]
 }
 
@@ -67,7 +72,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
-  const { lessonId, section, answers } = body
+  const { lessonId, section, answers, drillSeed: rawDrillSeed } = body
+  const drillSeed =
+    typeof rawDrillSeed === "number" && Number.isFinite(rawDrillSeed)
+      ? Math.floor(rawDrillSeed)
+      : 0
 
   if (!lessonId || typeof lessonId !== "string") {
     return NextResponse.json({ error: "Missing lessonId" }, { status: 400 })
@@ -121,6 +130,8 @@ export async function POST(req: Request) {
   // on the floor (could be a stale client cache from a content update).
   type Graded = {
     question: DrillQuestion
+    /** Order the client saw (vocab: same as `question`; grammar/listening: permuted). */
+    qForGrade: DrillQuestion
     pickedIndex: number
     isCorrect: boolean
     timeMs: number | null
@@ -129,16 +140,24 @@ export async function POST(req: Request) {
   for (const a of answers) {
     const q = a.questionId ? byId.get(a.questionId) : undefined
     if (!q) continue
+    const qForGrade =
+      section === "grammar" || section === "listening"
+        ? shuffleDrillQuestionChoices(
+            q,
+            section === "grammar" ? `grammar:${drillSeed}` : `listening:${drillSeed}`,
+          )
+        : q
     const pickedIndex =
       typeof a.pickedIndex === "number" &&
       a.pickedIndex >= 0 &&
-      a.pickedIndex < q.choices.length
+      a.pickedIndex < qForGrade.choices.length
         ? a.pickedIndex
         : -1
     graded.push({
       question: q,
+      qForGrade,
       pickedIndex,
-      isCorrect: pickedIndex === q.correctIndex,
+      isCorrect: pickedIndex === qForGrade.correctIndex,
       timeMs:
         typeof a.timeMs === "number" && a.timeMs >= 0
           ? Math.round(a.timeMs)
@@ -174,7 +193,9 @@ export async function POST(req: Request) {
           correct:
             g.question.choices[g.question.correctIndex] ?? "",
           picked:
-            g.pickedIndex >= 0 ? g.question.choices[g.pickedIndex] : "",
+            g.pickedIndex >= 0
+              ? (g.qForGrade.choices[g.pickedIndex] ?? "")
+              : "",
           isCorrect: g.isCorrect,
           timeMs: g.timeMs,
         })),

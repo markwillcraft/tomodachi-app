@@ -235,13 +235,19 @@ and maps cleanly to JLPT levels.
   client-driven drill per kind, reached only via the lesson view's
   "Start drill" CTA (direct URL still works). Vocab and Grammar use
   multiple-choice with instant feedback + per-question explanation;
-  Listening renders a `ListeningCard` (Japanese line, native audio via
+  choices show **A. B. C. D.** labels. Listening renders a
+  `ListeningCard` (Japanese line, native audio via
   `speech.ts`, optional romaji + English transcript) and asks a
-  comprehension question per dialogue. Questions are shuffled
-  client-side per attempt; vocab/grammar cap at a sensible session
-  size to keep drills bite-sized. Server **re-grades** answers against
-  the canonical bank in `dojo-content.ts` so the score is tamper-proof.
-  Failed results surface a "Re-read lesson" button alongside "Retake".
+  comprehension question per dialogue. **Which** questions appear is
+  shuffled client-side per attempt; for **vocab** the option order is
+  also shuffled when the bank is built. For **grammar** and
+  **listening**, options are permuted in the runner (correct answer
+  is not always "A" — see `shuffleDrillQuestionChoices` in
+  `src/lib/dojo-content.ts`); the client sends `drillSeed` on submit so
+  the server applies the same order when re-grading. Session length caps
+  keep drills bite-sized. Server **re-grades** against the canonical
+  bank in `dojo-content.ts` so the score is tamper-proof. Failed
+  results surface a "Re-read lesson" button alongside "Retake".
 - **Pass threshold** — `DOJO_PASS_THRESHOLD = 80%` on a single attempt.
   Below that the user can retake (the attempt still counts toward
   streaks / coins). At 80%+ the section flips to **passed** and stays
@@ -311,7 +317,14 @@ DojoProgress {
 
 1. Auth + validate `lessonId` / `section` against the catalog and
    `isSectionDrillable()` — coming-soon lessons are rejected.
-2. Re-grade the client's answers against the canonical drill bank.
+2. Re-grade the client's answers against the canonical drill bank. For
+   **grammar** and **listening**, the body includes `drillSeed` (the
+   drill runner's retake counter) so the server can run the same
+   `shuffleDrillQuestionChoices` permute as the client — authored MC
+   rows keep the right answer in slot 0 in `dojo-content.ts`, but the
+   UI shuffles the four options per attempt; grading indexes into that
+   permuted order. **Vocab** is already shuffled in `getSectionDrills`
+   and does not use this extra permute.
 3. Insert a `QuizAttempt` row with `mode = "dojo_vocab" |
    "dojo_grammar" | "dojo_listening"` so Dojo activity automatically
    counts toward streaks, daily quests, and the standard quiz coin
@@ -431,6 +444,15 @@ Quiz hub at `/quiz`, play screen at `/quiz/play`. Specialized launchers:
 plausible distractors and a smart sampling weight — items the user has missed
 recently (low SRS level / recent wrong answers) appear more often.
 
+Launchers cache the generated payload in `sessionStorage["quiz"]` as
+`{ mode, questions, training, generate, consumed }`, where `generate`
+stores the original request (`POST /api/quiz/generate` or
+`GET /api/quiz/redo-missed?...`). On the first `/quiz/play` mount,
+`consumed` flips to `true`. If the user refreshes mid-run, the play page
+detects `consumed: true` and replays `generate` to replace the question
+set before any answers are shown, so a refresh cannot restart question 1
+with the same arrangement for perfect-score farming.
+
 **Submission** (`/api/quiz/submit`):
 
 - Inserts a `QuizAttempt` plus one `QuestionResult` per answered question
@@ -441,6 +463,9 @@ recently (low SRS level / recent wrong answers) appear more often.
   unlocked milestones.
 - Returns `{ attemptId, summary, coinsAwarded, newlyUnlocked, outcomes }`
   for the rich result screen (per-item mastery deltas).
+- After a run finishes (ranked or training), the client clears
+  `sessionStorage["quiz"]` so revisiting `/quiz/play` requires a fresh
+  launcher flow.
 
 ### Spaced Repetition (SRS)
 

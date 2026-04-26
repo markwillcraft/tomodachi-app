@@ -73,17 +73,18 @@ export default function KanaQuizSetupPage() {
       // and let the API split the subset. The play UI cares about
       // hiragana_char vs katakana_char question kinds.
       const mode = script === "katakana" ? "katakana" : "hiragana";
+      const generateBody = {
+        count,
+        mode,
+        kanaScript: script,
+        kanaGroups: Array.from(selected),
+      };
       const data = await apiFetch<{ questions: unknown[] }>(
         "/api/quiz/generate",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            count,
-            mode,
-            kanaScript: script,
-            kanaGroups: Array.from(selected),
-          }),
+          body: JSON.stringify(generateBody),
         },
       );
       sessionStorage.setItem(
@@ -92,6 +93,12 @@ export default function KanaQuizSetupPage() {
           mode,
           questions: data.questions,
           training: sessionMode === "training",
+          generate: {
+            method: "POST",
+            url: "/api/quiz/generate",
+            body: generateBody,
+          },
+          consumed: false,
         }),
       );
       router.push("/quiz/play");

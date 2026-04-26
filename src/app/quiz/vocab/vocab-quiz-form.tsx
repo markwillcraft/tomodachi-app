@@ -37,10 +37,11 @@ export function VocabQuizForm({ wordCount }: { wordCount: number }) {
     setLoading(true);
     setError(null);
     try {
+      const generateBody = { count, mode: "vocab" as const };
       const data = await apiFetch<GenerateResponse>("/api/quiz/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ count, mode: "vocab" }),
+        body: JSON.stringify(generateBody),
       });
       sessionStorage.setItem(
         "quiz",
@@ -48,6 +49,12 @@ export function VocabQuizForm({ wordCount }: { wordCount: number }) {
           mode: "vocab",
           questions: data.questions,
           training: sessionMode === "training",
+          generate: {
+            method: "POST",
+            url: "/api/quiz/generate",
+            body: generateBody,
+          },
+          consumed: false,
         }),
       );
       router.push("/quiz/play");
