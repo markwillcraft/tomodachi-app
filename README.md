@@ -50,6 +50,7 @@ does it. If you change behavior in code, update the matching section here.
 | Framework | **Next.js 16** (App Router, React 19, Server Components by default) |
 | Language | TypeScript (strict) |
 | Styling | Tailwind CSS + shadcn/ui (Radix primitives, lucide-react icons) |
+| Japanese typography | **Noto Sans JP** via `next/font/google` (self-hosted; replaces remote Google Fonts `<link>` tags so the browser does not log “preloaded … not used” for font subresources) |
 | Auth | **Clerk** (`@clerk/nextjs`) — Google / email / magic links |
 | DB | **Postgres** via **Prisma** ORM. Neon (serverless) recommended in prod |
 | AI | **Google Gemini** (`gemini-flash-latest`) for romaji enrichment; study-tips API at `POST /api/progress/tips` (no in-app UI yet — see [roadmap 09](.cursor/docs/roadmap/09-tiers-and-trial.md)) |
@@ -356,7 +357,42 @@ any surface, no curriculum on top. It has:
     grid. Tap a cell to play it; toggle romaji to self-test. Every tap also
     fires `/api/kana/view` so the N5 modal can mark that character as **Started**.
   - **Vocab cards** (`/study/vocab`) — flip romaji ↔ kana ↔ meaning, with native
-    audio. Logs a `CardView` on flip / audio play / dwell ≥1.2s.
+    audio. Logs a `CardView` on flip / audio play / dwell ≥1.2s. A chip rail
+    above the deck filters by source: **All** (authoritative count from
+    `Word` — includes any orphan rows with `batchId = null` that predate the
+    import-batch feature), one chip per N5 category pack the user has added
+    (named like "Greetings (N5)"), and an **Imported Words** chip defined by
+    *exclusion* — every word that isn't part of a named category pack,
+    which covers both `source: "import"` batches and pre-feature orphans
+    in a single bucket. So when the user has 99 total words and 63 sit in
+    four category packs, Imported Words shows `(36)` regardless of whether
+    those 36 are from `Import #N` sessions or `batchId = null` legacy rows.
+    The chip renders whenever the rail is shown (even at zero) so the
+    filter stays discoverable; clicking it when empty falls through to the
+    deck's "no words" CTA which links to `/import`. Filters drive the URL
+    (`?batch=<id>` or `?source=import`, mutually exclusive — `?batch` wins
+    if both are sent); the deck remounts (and the deterministic daily
+    shuffle re-seeds) on every chip change so each filter starts cleanly at
+    card 1. The bottom action row reads **Prev / Focus / Next** — Focus
+    opens an Anki-style fullscreen overlay (native `<dialog>` in the
+    browser top layer with body scroll locked and a best-effort
+    `requestFullscreen()` that no-ops on iOS Safari). The dialog is laid
+    out in three zones: a header (counter + close `X`) with a
+    `border-b` divider, a full-width body that *is* the swipe zone, and
+    a footer (Prev / Flip / Next, three equal-width buttons in a
+    `max-w-md` grid) with a `border-t` divider. The body's swipe
+    handlers live on a wrapper div that extends *beyond* the card
+    visual on every side, so users on iPad / wide phones can drag from
+    any empty space around the card and still navigate — the bordered
+    header and footer wall off the controls so they aren't accidentally
+    swiped. The card visual itself uses `h-full` in focus mode (vs.
+    `min-h-[320px]` inline) so it consumes the body area and the screen
+    actually feels fullscreen on mobile. `touch-action: none` on the
+    body kills the few-pixels-of-vertical-bleed you get on mobile when
+    swiping horizontally. Esc or the top-right `X` exits; tapping the
+    card or any swipe-zone empty space (or pressing Space) still flips
+    the card. The inline Flip button is gone — Focus replaced it.
+    Source: `src/components/study-card.tsx`.
   - **N5 grammar** (`/study/grammar`) — color-coded particles & sentence
     patterns; tap any word to hear it.
   - **N5 kanji** (`/study/kanji/[char]`) — animated stroke order, on'yomi /

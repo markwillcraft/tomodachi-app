@@ -140,13 +140,28 @@ export async function awardCoins(
   dedupKey: string,
 ): Promise<{ awarded: boolean; amount: number }> {
   if (amount <= 0) return { awarded: false, amount: 0 };
+  // Pre-check before INSERT. The CoinLedger table has a unique constraint
+  // on (userId, dedupKey) so duplicate awards (e.g. claiming the same
+  // quest twice, backfilling a quiz that was already paid out) used to
+  // hit P2002 inside the catch below. We caught it correctly, but the
+  // Prisma client's `error` log channel still printed the failed INSERT
+  // before the catch swallowed it — generating dozens of `prisma:error`
+  // lines per page load in dev. The pre-check turns the duplicate path
+  // into a quiet SELECT that returns `null`, with the create only firing
+  // for genuinely-new awards. The try/catch is kept as a safety net for
+  // the (rare) race where two concurrent requests both pass the
+  // findUnique and only one wins the insert.
+  const existing = await prisma.coinLedger.findUnique({
+    where: { userId_dedupKey: { userId, dedupKey } },
+    select: { id: true },
+  });
+  if (existing) return { awarded: false, amount: 0 };
   try {
     await prisma.coinLedger.create({
       data: { userId, amount, reason, dedupKey },
     });
     return { awarded: true, amount };
   } catch (err) {
-    // P2002 = unique constraint violation → already awarded; that's fine.
     if (
       typeof err === "object" &&
       err !== null &&

@@ -33,18 +33,42 @@ function seededShuffle<T>(arr: T[], seed: number): T[] {
 export default async function StudyVocabPage({
   searchParams,
 }: {
-  searchParams: Promise<{ batch?: string }>;
+  searchParams: Promise<{ batch?: string; source?: string }>;
 }) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
   const sp = await searchParams;
-  const batchId = sp.batch ? Number(sp.batch) : null;
+  const rawBatchId = sp.batch ? Number(sp.batch) : null;
+  const batchId =
+    rawBatchId !== null && Number.isFinite(rawBatchId) ? rawBatchId : null;
+  // "Imported Words" is defined by *exclusion* — it means every word the
+  // user owns that *isn't* part of a named category pack. That covers two
+  // populations the user thinks of as the same thing:
+  //   1. Words assigned to a `source: "import"` batch (manual romaji
+  //      paste / upload from /import).
+  //   2. Pre-feature orphans where `batchId IS NULL` — the schema
+  //      explicitly allows this for words that predate the import-batch
+  //      model.
+  // Matching by the inverse of `source: "category"` (rather than
+  // `source: "import"`) means any future `source` value (e.g. "lesson")
+  // automatically falls into Imported Words too. `?source=import` and
+  // `?batch=N` are mutually exclusive; `?batch` wins if both are sent.
+  const sourceFilter =
+    !batchId && sp.source === "import" ? ("import" as const) : null;
 
   const words = await prisma.word.findMany({
     where: {
       userId,
-      ...(batchId && Number.isFinite(batchId) ? { batchId } : {}),
+      ...(batchId ? { batchId } : {}),
+      ...(sourceFilter
+        ? {
+            OR: [
+              { batchId: null },
+              { batch: { source: { not: "category" } } },
+            ],
+          }
+        : {}),
     },
     orderBy: { createdAt: "asc" },
     include: { batch: { select: { id: true, name: true } } },
@@ -69,11 +93,17 @@ export default async function StudyVocabPage({
   // Deterministic daily shuffle: same seed for the whole day so reloads
   // don't scramble the order, but next day gives a fresh ordering. Key
   // off the local day so the shuffle rotates at the user's midnight,
-  // not UTC's.
+  // not UTC's. The filter is part of the seed so each chip gets its own
+  // stable order — switching from "All" to "Common Verbs" gives a fresh
+  // (but deterministic-for-today) sequence rather than a sub-shuffle of
+  // the all-deck order.
   const todayKey = localDayKey(now, tz);
-  const seed = hashString(
-    `${userId}::${todayKey}::batch=${batchId ?? "all"}`,
-  );
+  const filterKey = batchId
+    ? `batch=${batchId}`
+    : sourceFilter
+      ? `source=${sourceFilter}`
+      : "all";
+  const seed = hashString(`${userId}::${todayKey}::${filterKey}`);
   const shuffled = seededShuffle(words, seed);
 
   const studyWords: StudyWord[] = shuffled.map((w) => ({
@@ -91,12 +121,33 @@ export default async function StudyVocabPage({
   let startIndex = studyWords.findIndex((w) => !viewedSet.has(w.id));
   if (startIndex === -1) startIndex = 0;
 
-  const batches = await prisma.importBatch.findMany({
-    where: { userId },
-    orderBy: { createdAt: "asc" },
-    include: { _count: { select: { words: true } } },
-  });
-  const totalAcrossAll = batches.reduce((s, b) => s + b._count.words, 0);
+  const [batches, totalAcrossAll] = await Promise.all([
+    prisma.importBatch.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+      include: { _count: { select: { words: true } } },
+    }),
+    // Authoritative "All" count — pulls straight from `Word` so it also
+    // includes orphan rows where `batchId IS NULL` (legacy words from
+    // before the import-batch feature; the schema explicitly allows this).
+    // Summing per-batch `_count.words` would silently undercount those.
+    prisma.word.count({ where: { userId } }),
+  ]);
+  // Category packs each get their own chip (named like "Greetings (N5)"
+  // and stable across re-imports). Everything else is bucketed under a
+  // single "Imported Words" chip — manual `Import #N` sessions plus any
+  // orphan words (`batchId IS NULL`). We always render the Imported Words
+  // chip when the rail is shown — even at zero — so the filter is
+  // discoverable; clicking it when empty lands on the deck's "no words"
+  // CTA which prompts the user to /import. Computing the count by
+  // subtraction (totalAcrossAll - categoryTotal) avoids a third DB query
+  // and matches the inclusive `where` clause exactly.
+  const categoryBatches = batches.filter((b) => b.source === "category");
+  const categoryTotal = categoryBatches.reduce(
+    (s, b) => s + b._count.words,
+    0,
+  );
+  const importedTotal = totalAcrossAll - categoryTotal;
 
   return (
     <div className="space-y-8">
@@ -120,14 +171,14 @@ export default async function StudyVocabPage({
         </p>
       </section>
 
-      {batches.length > 0 && (
+      {totalAcrossAll > 0 && (
         <div className="flex flex-wrap gap-2">
           <BatchChip
             href="/study/vocab"
             label={`All (${totalAcrossAll})`}
-            active={!batchId}
+            active={!batchId && !sourceFilter}
           />
-          {batches.map((b) => (
+          {categoryBatches.map((b) => (
             <BatchChip
               key={b.id}
               href={`/study/vocab?batch=${b.id}`}
@@ -135,10 +186,22 @@ export default async function StudyVocabPage({
               active={batchId === b.id}
             />
           ))}
+          <BatchChip
+            href="/study/vocab?source=import"
+            label={`Imported Words (${importedTotal})`}
+            active={sourceFilter === "import"}
+          />
         </div>
       )}
 
+      {/* `key` forces the deck to remount when the filter changes. The deck
+          is a client component that snapshots `words` into local `useState`
+          on mount, so without a key change a soft navigation (URL update +
+          new server props) leaves the previous deck onscreen and the chips
+          appear inert. The key also resets card index and the swipe state
+          so a new filter starts cleanly at card 1. */}
       <StudyCardDeck
+        key={filterKey}
         words={studyWords}
         initialViewedIds={initialViewedIds}
         dailyCardGoal={DAILY_CARD_GOAL}

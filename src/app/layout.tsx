@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import NextTopLoader from "nextjs-toploader";
+import { Noto_Sans_JP } from "next/font/google";
 import { auth } from "@clerk/nextjs/server";
 import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
@@ -31,6 +32,16 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
 };
+
+// Self-host Noto Sans JP via next/font so we don't pull Google Fonts’
+// remote CSS (which injects font preloads that Chrome flags as “not used
+// within a few seconds” when weights don’t match the first paint).
+const notoSansJP = Noto_Sans_JP({
+  weight: ["400", "500", "700"],
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-noto-sans-jp",
+});
 
 export default async function RootLayout({
   children,
@@ -95,21 +106,13 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin=""
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html
+      lang="en"
+      className={notoSansJP.variable}
+      suppressHydrationWarning
+    >
       <body
-        className={cn("min-h-screen antialiased")}
+        className={cn("min-h-screen antialiased", notoSansJP.className)}
         suppressHydrationWarning
       >
         <ThemeProvider>
