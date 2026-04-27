@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, BookOpen } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { CATEGORIES } from "@/lib/categories";
 import { VocabQuizForm } from "./vocab-quiz-form";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +16,33 @@ export default async function VocabQuizSetupPage() {
   // /api/words just to count them. That meant a guaranteed
   // round-trip + skeleton flash. Counting on the server makes
   // the render synchronous from the user's POV.
-  const wordCount = await prisma.word.count({ where: { userId } });
+  const [wordCount, categoryBatches] = await Promise.all([
+    prisma.word.count({ where: { userId } }),
+    prisma.importBatch.findMany({
+      where: { userId, source: "category" },
+      orderBy: { createdAt: "asc" },
+      include: { _count: { select: { words: true } } },
+    }),
+  ]);
+  const categoryTotal = categoryBatches.reduce((sum, b) => sum + b._count.words, 0);
+  const importedCount = Math.max(0, wordCount - categoryTotal);
+  const existingCategoryBatchNames = new Set(categoryBatches.map((b) => b.name));
+  const catalogTopics = CATEGORIES.map((cat) => {
+    const batchName = `${cat.name} (${cat.level})`;
+    return {
+      slug: cat.slug,
+      name: cat.name,
+      level: cat.level,
+      count: cat.words.length,
+      batchName,
+      alreadyAdded: existingCategoryBatchNames.has(batchName),
+    };
+  });
+  const formBatches = categoryBatches.map((b) => ({
+    id: b.id,
+    name: b.name,
+    count: b._count.words,
+  }));
 
   return (
     <div className="space-y-8">
@@ -40,7 +67,12 @@ export default async function VocabQuizSetupPage() {
         </p>
       </section>
 
-      <VocabQuizForm wordCount={wordCount} />
+      <VocabQuizForm
+        wordCount={wordCount}
+        importedCount={importedCount}
+        categoryBatches={formBatches}
+        catalogTopics={catalogTopics}
+      />
     </div>
   );
 }

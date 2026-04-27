@@ -444,6 +444,27 @@ Quiz hub at `/quiz`, play screen at `/quiz/play`. Specialized launchers:
 plausible distractors and a smart sampling weight — items the user has missed
 recently (low SRS level / recent wrong answers) appear more often.
 
+The **Vocab launcher** (`/quiz/vocab`) adds a Category card above the count
+and session-mode cards. The picker is independent of Ranked/Training and
+has two sections:
+
+- **Your library** — `All`, every existing `ImportBatch` (category- or
+  import-sourced), and a synthetic `Imported Words` chip that targets
+  any word *not* in a `source: "category"` batch.
+- **From N5 catalog** — only rendered when there are catalog topics from
+  `src/lib/categories.ts` the user hasn't added yet. Picking one of
+  these chips and pressing Start chains a `POST /api/categories/add`
+  call before the generate request, so the words land in the user's
+  library on the same click. The add API is idempotent (looks up the
+  existing batch by name before creating one), so re-clicking is safe.
+
+Picking a category sends a `vocabFilter` to `/api/quiz/generate` —
+either `{ kind: "batch", batchId }` or `{ kind: "imported" }`. The
+server validates batch ownership and **caps the requested count** to
+the size of the filtered pool, so a 12-word category never has to pad
+or repeat to fill a 50-question request. The capped value comes back
+as `effectiveCount` in the response.
+
 Launchers cache the generated payload in `sessionStorage["quiz"]` as
 `{ mode, questions, training, generate, consumed }`, where `generate`
 stores the original request (`POST /api/quiz/generate` or
@@ -954,7 +975,7 @@ All endpoints require Clerk auth via `requireUserId()` and return JSON.
 | `/api/cards/view` | POST | Log a vocab `CardView`. |
 | `/api/kana/view` | POST | Log a kana table tap (`KanaView`). |
 | `/api/kanji/view` | POST | Log a kanji study interaction (`KanjiView`). |
-| `/api/quiz/generate` | POST | Build a quiz set with smart sampling. |
+| `/api/quiz/generate` | POST | Build a quiz set with smart sampling. Optional `vocabFilter` (`{ kind: "batch", batchId }` or `{ kind: "imported" }`) narrows the vocab pool to a category or to non-catalog words; the server caps `count` to the filtered pool size and returns `effectiveCount`. |
 | `/api/quiz/submit` | POST | Persist results, advance SRS, award coins, evaluate achievements. |
 | `/api/quiz/redo-missed` | POST | Build a quiz from the user's recent misses. |
 | `/api/dojo/submit-section` | POST | Re-grade a Dojo section drill, upsert `DojoProgress`, log a `QuizAttempt`, award coins, evaluate achievements. |

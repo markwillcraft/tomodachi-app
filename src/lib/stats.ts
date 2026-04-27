@@ -122,7 +122,20 @@ export async function getWordsWithStats(userId: string) {
     where: { userId },
     orderBy: { createdAt: "desc" },
   });
+  return attachWordStats(userId, words);
+}
 
+/**
+ * Attach the same per-word answered/correct totals that `getWordsWithStats`
+ * computes onto an externally-fetched `Word[]` list. Useful when the caller
+ * needed a custom `where` filter (e.g. the vocab quiz `vocabFilter` path)
+ * but still wants the weighted sampling in `generateQuestions` to favour
+ * words the user has missed.
+ */
+export async function attachWordStats<T extends { id: number }>(
+  userId: string,
+  words: T[],
+) {
   const grouped = await prisma.questionResult.groupBy({
     by: ["wordId", "isCorrect"],
     where: { wordId: { not: null }, attempt: { userId } },
