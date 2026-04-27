@@ -243,7 +243,15 @@ export function N5MasteryModal({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          aria-label="Open N5 mastery breakdown"
+          className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          {trigger}
+        </button>
+      </DialogTrigger>
       <DialogContent className="max-h-[90vh] w-[calc(100vw-1.5rem)] max-w-3xl overflow-hidden p-0 sm:w-full">
         <div className="flex max-h-[90vh] min-w-0 flex-col">
           {/* Header */}

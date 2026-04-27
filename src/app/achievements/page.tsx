@@ -104,25 +104,23 @@ function N5GrandCard({
   const { kanji, kana, vocab, pct } = snapshot;
   const unlocked = pct >= 100;
   const trigger = (
-    <button
-      type="button"
-      aria-label="Open N5 mastery breakdown"
+    <span
       className={cn(
-        "group relative w-full overflow-hidden rounded-2xl border p-5 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:p-6",
+        "group relative block w-full overflow-hidden rounded-2xl border p-5 text-left transition-all hover:-translate-y-0.5 hover:shadow-lg sm:p-6",
         unlocked
           ? "border-rose-500/50 bg-gradient-to-br from-rose-500/15 via-amber-500/10 to-card hover:border-rose-500/70"
           : "border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-card to-card hover:border-rose-500/50",
       )}
     >
-      <div
+      <span
         aria-hidden
         className="jp pointer-events-none absolute -right-4 -bottom-12 select-none text-[12rem] font-bold leading-none text-rose-500/10 sm:text-[16rem]"
       >
         極
-      </div>
+      </span>
 
-      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-4">
+      <span className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <span className="flex items-center gap-4">
           <span
             className={cn(
               "flex size-14 shrink-0 items-center justify-center rounded-2xl text-3xl ring-1 ring-inset",
@@ -133,35 +131,35 @@ function N5GrandCard({
           >
             {unlocked ? "⛩️" : <Crown className="size-6 text-rose-500" />}
           </span>
-          <div>
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-300">
+          <span className="block">
+            <span className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-rose-600 dark:text-rose-300">
               <Crown className="size-3.5" />
               Grand milestone · N5 Master
-            </div>
-            <h2 className="text-xl font-bold tracking-tight sm:text-2xl">
+            </span>
+            <span className="block text-xl font-bold tracking-tight sm:text-2xl">
               The full N5 toolkit
-            </h2>
-            <p className="text-sm text-muted-foreground">
+            </span>
+            <span className="block text-sm text-muted-foreground">
               Master every N5 kanji, 90% of kana, and three-quarters of N5
               vocab — all the way to SRS level 6.
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 text-right">
-          <div>
-            <div className="text-3xl font-bold tabular-nums">
+            </span>
+          </span>
+        </span>
+        <span className="flex items-center gap-3 text-right">
+          <span className="block">
+            <span className="block text-3xl font-bold tabular-nums">
               {pct.toFixed(1)}
               <span className="text-xl">%</span>
-            </div>
-            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            </span>
+            <span className="block text-[11px] uppercase tracking-wider text-muted-foreground">
               {unlocked ? "Unlocked" : "Path progress"}
-            </div>
-          </div>
+            </span>
+          </span>
           <ChevronRight className="size-5 text-rose-500/60 transition-transform group-hover:translate-x-0.5 group-hover:text-rose-500" />
-        </div>
-      </div>
+        </span>
+      </span>
 
-      <div className="relative mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <span className="relative mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <N5AxisBar
           label="N5 kanji mastered"
           icon="漢"
@@ -180,13 +178,13 @@ function N5GrandCard({
           current={vocab.current}
           target={vocab.target}
         />
-      </div>
+      </span>
 
-      <div className="relative mt-4 inline-flex items-center gap-1.5 text-[11px] font-medium text-rose-600/80 transition-colors group-hover:text-rose-600 dark:text-rose-300/70 dark:group-hover:text-rose-300">
+      <span className="relative mt-4 inline-flex items-center gap-1.5 text-[11px] font-medium text-rose-600/80 transition-colors group-hover:text-rose-600 dark:text-rose-300/70 dark:group-hover:text-rose-300">
         Tap for the full path breakdown
         <ChevronRight className="size-3" />
-      </div>
-    </button>
+      </span>
+    </span>
   );
 
   return <N5MasteryModal trigger={trigger} snapshot={paths} />;
@@ -302,16 +300,16 @@ function N5AxisBar({
   const pct = target === 0 ? 0 : Math.min(100, Math.round((current / target) * 100));
   const done = current >= target;
   return (
-    <div className="rounded-xl border bg-card/70 p-3 backdrop-blur-sm">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+    <span className="block rounded-xl border bg-card/70 p-3 backdrop-blur-sm">
+      <span className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2">
           <span className="jp flex size-7 items-center justify-center rounded-md bg-rose-500/15 text-base font-bold text-rose-600 dark:text-rose-300">
             {icon}
           </span>
           <span className="text-xs font-medium text-muted-foreground">
             {label}
           </span>
-        </div>
+        </span>
         <span
           className={cn(
             "text-xs font-semibold tabular-nums",
@@ -321,18 +319,18 @@ function N5AxisBar({
           {Math.min(current, target).toLocaleString()} /{" "}
           {target.toLocaleString()}
         </span>
-      </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-        <div
+      </span>
+      <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-muted">
+        <span
           className={cn(
-            "h-full rounded-full transition-[width] duration-500",
+            "block h-full rounded-full transition-[width] duration-500",
             done
               ? "bg-gradient-to-r from-emerald-400 to-emerald-600"
               : "bg-gradient-to-r from-rose-400 to-orange-500",
           )}
           style={{ width: `${Math.max(2, pct)}%` }}
         />
-      </div>
-    </div>
+      </span>
+    </span>
   );
 }
