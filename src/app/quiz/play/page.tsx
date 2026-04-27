@@ -306,6 +306,28 @@ export default function PlayPage() {
     );
   }
 
+  // Inline-restart path for the results-screen "Drill these now" button.
+  // We're already mounted at /quiz/play, so router.push("/quiz/play")
+  // wouldn't remount us — we'd just sit on the results screen with the
+  // freshly-loaded questions stuck in sessionStorage. Instead the button
+  // hands the questions back to us and we reset every piece of session
+  // state by hand.
+  function startRedoSession(newQuestions: unknown[]) {
+    setQuestions(newQuestions as Question[]);
+    setMode("redo");
+    setTraining(false);
+    setIndex(0);
+    setPicked(null);
+    setAnswers([]);
+    setFinished(false);
+    setNewlyUnlocked([]);
+    setSrsOutcomes([]);
+    setBootError(null);
+    sessionStartRef.current = Date.now();
+    questionStartRef.current = Date.now();
+    setElapsed(0);
+  }
+
   if (finished) {
     return (
       <ResultsView
@@ -316,6 +338,7 @@ export default function PlayPage() {
         newlyUnlocked={newlyUnlocked}
         mode={mode}
         srsOutcomes={srsOutcomes}
+        onStartRedo={startRedoSession}
       />
     );
   }
@@ -478,6 +501,7 @@ function ResultsView({
   newlyUnlocked,
   mode,
   srsOutcomes,
+  onStartRedo,
 }: {
   answers: Answer[];
   total: number;
@@ -486,6 +510,7 @@ function ResultsView({
   newlyUnlocked: UnlockedAchievement[];
   mode: string;
   srsOutcomes: SrsOutcome[];
+  onStartRedo: (questions: unknown[]) => void;
 }) {
   // Index outcomes by question position so per-item rows can pull
   // their post-answer mastery without scanning the full array.
@@ -735,6 +760,7 @@ function ResultsView({
                 limit={Math.min(20, Math.max(5, wrong.length))}
                 variant="primary"
                 label="Drill these now"
+                onStart={onStartRedo}
               />
             )}
           </CardHeader>

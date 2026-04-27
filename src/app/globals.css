@@ -64,6 +64,13 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Thin, low-contrast scrollbars sitewide. Firefox + Chromium ≥121 +
+     Safari ≥18.2 honour these; older Safari falls back to its native
+     overlay scrollbar which is already unobtrusive. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: gray transparent;
+  }
 }
 
 .jp {

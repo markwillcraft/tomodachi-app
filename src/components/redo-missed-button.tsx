@@ -19,18 +19,25 @@ type Props = {
   label?: string;
   // Extra classes (sizing, alignment) for the button itself.
   className?: string;
+  // Optional inline-start handler. Used by callers that are *already*
+  // mounted at /quiz/play (the results screen) — pushing the same route
+  // doesn't remount the player so the init effect never re-runs. When
+  // provided, we skip navigation and hand the freshly-loaded questions
+  // to the parent, which resets its own local state.
+  onStart?: (questions: unknown[]) => void;
 };
 
 // Shared UX for "redo your recent wrong answers". The endpoint rebuilds
 // fresh questions from `QuestionResult` history, we drop them into
 // sessionStorage where /quiz/play already expects to find them, then
-// route the user into the player. Marked `training: true` so the session
-// doesn't double-count toward streak/Progress.
+// route the user into the player. Counts as a real quiz attempt so it
+// earns coins, advances streak, and shows up in Recent attempts.
 export function RedoMissedButton({
   limit = 20,
   variant = "outline",
   label,
   className,
+  onStart,
 }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -47,9 +54,11 @@ export function RedoMissedButton({
         setError("No missed questions to drill yet — take a quiz first.");
         return;
       }
-      // Counts as a real quiz attempt — earns coins, advances streak,
-      // shows up in Recent attempts. The mode tag "redo" lets us split
-      // it out in stats later if we want.
+      // When `onStart` owns the handoff we mark the cache `consumed: true`
+      // immediately — the parent already has the questions in hand, and a
+      // mid-run refresh should re-fetch via `generate` rather than reuse
+      // a stale set. The route-push path keeps `consumed: false` so the
+      // player can pick the questions up on its first mount.
       window.sessionStorage.setItem(
         "quiz",
         JSON.stringify({
@@ -60,10 +69,14 @@ export function RedoMissedButton({
             method: "GET",
             url: `/api/quiz/redo-missed?limit=${limit}`,
           },
-          consumed: false,
+          consumed: Boolean(onStart),
         }),
       );
-      router.push("/quiz/play");
+      if (onStart) {
+        onStart(data.questions);
+      } else {
+        router.push("/quiz/play");
+      }
     } catch (e) {
       setError(apiErrorMessage(e, "Could not load missed questions."));
     } finally {
