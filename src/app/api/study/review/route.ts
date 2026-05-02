@@ -33,6 +33,15 @@ export async function GET(req: Request) {
       : 20;
 
   const due = await getDueItems(userId, limit);
+
+  // Belt-and-suspenders cleanup: getDueItems already filters out
+  // orphaned ReviewState rows (vocab whose Word was deleted, kana/kanji
+  // chars not in the canonical lists). To stop them counting forever
+  // against the user, hard-delete those orphans here once we've
+  // observed them. This keeps the table tidy even though the read path
+  // would already hide them.
+  await sweepOrphans(userId);
+
   if (due.length === 0) {
     return NextResponse.json({ questions: [] as Question[] });
   }
@@ -55,6 +64,9 @@ export async function GET(req: Request) {
     if (item.itemType === "vocab") {
       const id = Number(item.itemKey);
       const word = wordById.get(id);
+      // getDueItems already filtered these out, but a concurrent delete
+      // between that read and this one would leave a stale row — skip
+      // rather than crash the response.
       if (!word) continue;
       questions.push(buildVocabQuestion(word, allWords));
     } else if (item.itemType === "kanji") {
@@ -84,4 +96,56 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({ questions });
+}
+
+// Hard-delete any ReviewState rows that the read path can't materialize
+// any more. Runs synchronously so the next call is consistent; the cost
+// is one cheap targeted query per type that has orphans, none if the
+// user is already clean.
+async function sweepOrphans(userId: string): Promise<void> {
+  const rows = await prisma.reviewState.findMany({
+    where: { userId },
+    select: { id: true, itemType: true, itemKey: true },
+  });
+  if (rows.length === 0) return;
+
+  const vocabIds = rows
+    .filter((r) => r.itemType === "vocab")
+    .map((r) => Number(r.itemKey))
+    .filter((id) => Number.isInteger(id));
+
+  const ownedWordIds = vocabIds.length
+    ? new Set(
+        (
+          await prisma.word.findMany({
+            where: { userId, id: { in: vocabIds } },
+            select: { id: true },
+          })
+        ).map((w) => w.id),
+      )
+    : new Set<number>();
+
+  const kanaSet = new Set<string>([
+    ...HIRAGANA.map((p) => p.kana),
+    ...KATAKANA.map((p) => p.kana),
+  ]);
+  const kanjiSet = new Set<string>(N5_KANJI.map((k) => k.char));
+
+  const orphanIds = rows
+    .filter((r) => {
+      if (r.itemType === "vocab") {
+        const id = Number(r.itemKey);
+        return !Number.isInteger(id) || !ownedWordIds.has(id);
+      }
+      if (r.itemType === "kana") return !kanaSet.has(r.itemKey);
+      if (r.itemType === "kanji") return !kanjiSet.has(r.itemKey);
+      return true;
+    })
+    .map((r) => r.id);
+
+  if (orphanIds.length === 0) return;
+
+  await prisma.reviewState.deleteMany({
+    where: { userId, id: { in: orphanIds } },
+  });
 }

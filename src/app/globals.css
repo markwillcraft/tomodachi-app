@@ -106,3 +106,23 @@
 .animate-float {
   animation: float-y 3.5s ease-in-out infinite;
 }
+
+/* Linear left-to-right fill used by the kana quiz Reading mode play
+   loop's countdown bar. Driven by CSS keyframes (not React state) so
+   the indicator always paints exactly to the right edge by the end
+   of each phase, without rAF lag or shadcn's default
+   transition-all easing. The runner sets `animation-duration` per
+   phase (4000ms show / 2500ms reveal) and toggles
+   `animation-play-state` for pause/resume. */
+@keyframes reading-progress-fill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+.animate-reading-progress {
+  transform-origin: left center;
+  animation-name: reading-progress-fill;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  animation-iteration-count: 1;
+}

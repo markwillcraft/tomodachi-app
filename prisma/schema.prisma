@@ -283,6 +283,42 @@ model Notification {
   @@index([userId, readAt])
 }
 
+// Static catalog of words for the Hiragana/Katakana Reading mode. Not
+// per-user — this is global content. Layout: 4 stages × 5 daily-cycle
+// slots × 50 words = 1000 rows.
+//
+//   stage       — 1..4 (mora bin: stage 1 = 2 mora, …, stage 4 = 5 mora)
+//   dayOfCycle  — 1..5 (Mon..Fri). The Reading mode auto-releases one
+//                 set per weekday; on Sat/Sun the user picks any 1..5.
+//   sortIndex   — 1..50 within the (stage, dayOfCycle) bucket
+//
+// Seeded from prisma/seed/reading-words.ts; the seed runner upserts via
+// createMany({ skipDuplicates: true }) keyed on the unique tuple below
+// so re-running `prisma db seed` is a no-op on existing slots and
+// future admin edits in prod survive the next seed.
+//
+// `mora` is asserted at seed time to equal splitMora(display).length so
+// authoring drift fails the seed instead of silently shipping. The
+// broader plan to migrate every hardcoded content surface to DB tables
+// (with admin CRUD) lives in
+// .cursor/docs/roadmap/12-words-transfer-to-database.md.
+model ReadingWord {
+  id         Int      @id @default(autoincrement())
+  stage      Int
+  dayOfCycle Int
+  sortIndex  Int
+  display    String
+  romaji     String
+  english    String
+  kanji      String?
+  mora       Int
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@unique([stage, dayOfCycle, sortIndex])
+  @@index([stage, dayOfCycle])
+}
+
 // Append-only ledger of every coin grant (and, eventually, spend). The
 // dedupKey is the deduplication contract: e.g. "quiz:<attemptId>" awards
 // quiz coins exactly once even if /api/quiz/submit is retried, and

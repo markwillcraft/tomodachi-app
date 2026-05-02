@@ -82,6 +82,18 @@ export const feedback = {
     tone(220, 0.22, "sawtooth", 0.12, 0);
     tone(185, 0.18, "sawtooth", 0.1, 0.08);
   },
+  /** Quiet metronome blip used in the kana quiz Reading mode at the
+   *  1.0s and 2.0s marks of the 4s show window — punctuates the
+   *  countdown without dominating the user's focus. */
+  tickSoft() {
+    tone(880, 0.06, "sine", 0.04);
+  },
+  /** Brighter, slightly louder cue at the 3.0s mark of the same
+   *  show window, telegraphing "answer reveal incoming" right
+   *  before the card flips. */
+  tickFinal() {
+    tone(1320, 0.09, "triangle", 0.06);
+  },
   setEnabled(v: boolean) {
     enabled = v;
   },

@@ -1,5 +1,7 @@
 import { prisma } from "./prisma";
 import type { QuestionKind } from "./quiz";
+import { HIRAGANA, KATAKANA } from "./kana";
+import { N5_KANJI } from "./kanji";
 
 // =====================================================================
 // Spaced repetition (Leitner-style)
@@ -161,14 +163,18 @@ export type DueItem = {
   nextReviewAt: Date;
 };
 
-// Fetch items whose `nextReviewAt` has already passed. We cap the list
-// so a very stale user doesn't get smacked with 400 due items at once;
-// 40 is enough for a ~10-minute session. Ordered by earliest due so we
-// tackle the oldest gaps first.
-export async function getDueItems(
-  userId: string,
-  limit = 40,
-): Promise<DueItem[]> {
+// Internal helper. Loads all `nextReviewAt <= now()` rows for the user
+// (capped at 200 for safety, matching the previous take limit) and
+// drops anything we know `/api/study/review` can't materialize:
+//
+//  - vocab rows whose Word has been deleted (orphans),
+//  - kana rows whose char isn't in the canonical HIRAGANA/KATAKANA lists,
+//  - kanji rows whose char isn't in N5_KANJI.
+//
+// Without this, `getDueCount` would over-count and the badge would say
+// "Review N due" while the API silently returns 0 questions. See the
+// "Review N due → Nothing due right now" bug fix for context.
+async function getLiveDueRows(userId: string): Promise<DueItem[]> {
   const rows = await prisma.reviewState.findMany({
     where: {
       userId,
@@ -176,7 +182,7 @@ export async function getDueItems(
       level: { lt: MAX_SRS_LEVEL },
     },
     orderBy: { nextReviewAt: "asc" },
-    take: Math.min(Math.max(limit, 1), 200),
+    take: 200,
     select: {
       itemType: true,
       itemKey: true,
@@ -184,22 +190,61 @@ export async function getDueItems(
       nextReviewAt: true,
     },
   });
-  return rows.map((r) => ({
-    itemType: r.itemType as ItemType,
-    itemKey: r.itemKey,
-    level: r.level,
-    nextReviewAt: r.nextReviewAt,
-  }));
+
+  const vocabIds = rows
+    .filter((r) => r.itemType === "vocab")
+    .map((r) => Number(r.itemKey))
+    .filter((id) => Number.isInteger(id));
+
+  const ownedWordIds = vocabIds.length
+    ? new Set(
+        (
+          await prisma.word.findMany({
+            where: { userId, id: { in: vocabIds } },
+            select: { id: true },
+          })
+        ).map((w) => w.id),
+      )
+    : new Set<number>();
+
+  const kanaSet = new Set<string>([
+    ...HIRAGANA.map((p) => p.kana),
+    ...KATAKANA.map((p) => p.kana),
+  ]);
+  const kanjiSet = new Set<string>(N5_KANJI.map((k) => k.char));
+
+  return rows
+    .filter((r) => {
+      if (r.itemType === "vocab") {
+        const id = Number(r.itemKey);
+        return Number.isInteger(id) && ownedWordIds.has(id);
+      }
+      if (r.itemType === "kana") return kanaSet.has(r.itemKey);
+      if (r.itemType === "kanji") return kanjiSet.has(r.itemKey);
+      return false;
+    })
+    .map((r) => ({
+      itemType: r.itemType as ItemType,
+      itemKey: r.itemKey,
+      level: r.level,
+      nextReviewAt: r.nextReviewAt,
+    }));
+}
+
+// Fetch items whose `nextReviewAt` has already passed. Ordered by
+// earliest due so we tackle the oldest gaps first. Filtered to items
+// the question builders can actually render — see `getLiveDueRows`.
+export async function getDueItems(
+  userId: string,
+  limit = 40,
+): Promise<DueItem[]> {
+  const live = await getLiveDueRows(userId);
+  return live.slice(0, Math.min(Math.max(limit, 1), 200));
 }
 
 export async function getDueCount(userId: string): Promise<number> {
-  return prisma.reviewState.count({
-    where: {
-      userId,
-      nextReviewAt: { lte: new Date() },
-      level: { lt: MAX_SRS_LEVEL },
-    },
-  });
+  const live = await getLiveDueRows(userId);
+  return live.length;
 }
 
 export type MasteryBuckets = {

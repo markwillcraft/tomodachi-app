@@ -84,8 +84,15 @@ cp .env.example .env
 #   GEMINI_API_KEY
 #   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN  (optional in dev)
 npx prisma migrate deploy
+npx prisma db seed
 npm run dev
 ```
+
+> `npx prisma db seed` populates the `ReadingWord` table that powers the
+> Hiragana / Katakana quiz Reading mode. The seed is **idempotent** —
+> safe to re-run after pulls — and uses `createMany({ skipDuplicates:
+> true })` keyed on `(stage, dayOfCycle, sortIndex)` so any future
+> admin-edited rows survive subsequent seeds (see roadmap 12).
 
 Open <http://localhost:3000>, click **Sign up**, and you're in.
 
@@ -427,6 +434,16 @@ any surface, no curriculum on top. It has:
 Quiz hub at `/quiz`, play screen at `/quiz/play`. Specialized launchers:
 `/quiz/kana`, `/quiz/vocab`, `/quiz/kanji`.
 
+The Hiragana / Katakana launcher (`/quiz/kana`) hosts a top-level
+**Session mode** picker with two children:
+
+- **Kana Guessing** (default) — the multiple-choice drill described
+  below. Inherits the existing Ranked / Training scoring, Script
+  picker (hiragana / katakana / both), Rows selector, and question
+  count.
+- **Reading Session** — a passive timed flashcard run organised into
+  4 mora-graded stages. See **Reading mode (kana)** below.
+
 **Question kinds** (`src/lib/quiz.ts`):
 
 | Kind | Prompt | Answer |
@@ -445,25 +462,38 @@ plausible distractors and a smart sampling weight — items the user has missed
 recently (low SRS level / recent wrong answers) appear more often.
 
 The **Vocab launcher** (`/quiz/vocab`) adds a Category card above the count
-and session-mode cards. The picker is independent of Ranked/Training and
-has two sections:
+and session-mode cards. The picker is independent of Ranked/Training,
+**multi-select**, and has two sections:
 
 - **Your library** — `All`, every existing `ImportBatch` (category- or
   import-sourced), and a synthetic `Imported Words` chip that targets
-  any word *not* in a `source: "category"` batch.
+  any word *not* in a `source: "category"` batch. Chips behave like
+  checkboxes (`role="checkbox"`, `aria-checked`); the user can mix
+  several batches and `Imported Words` together, and `All` is the
+  implicit state when no other chip is selected (tapping `All` clears
+  the rest).
 - **From N5 catalog** — only rendered when there are catalog topics from
-  `src/lib/categories.ts` the user hasn't added yet. Picking one of
-  these chips and pressing Start chains a `POST /api/categories/add`
-  call before the generate request, so the words land in the user's
-  library on the same click. The add API is idempotent (looks up the
-  existing batch by name before creating one), so re-clicking is safe.
+  `src/lib/categories.ts` the user hasn't added yet. Selected catalog
+  chips fan out a parallel set of `POST /api/categories/add` calls on
+  Start, then merge the returned batch ids into the generate request.
+  The add API is idempotent (looks up the existing batch by name
+  before creating one), so re-clicking is safe.
 
-Picking a category sends a `vocabFilter` to `/api/quiz/generate` —
-either `{ kind: "batch", batchId }` or `{ kind: "imported" }`. The
-server validates batch ownership and **caps the requested count** to
-the size of the filtered pool, so a 12-word category never has to pad
-or repeat to fill a 50-question request. The capped value comes back
-as `effectiveCount` in the response.
+Picking any non-empty selection sends a `vocabFilter` to
+`/api/quiz/generate` of shape
+`{ batchIds?: number[]; includeImported?: boolean }`. The server
+validates batch ownership (silently dropping unowned ids), unions the
+two clauses into one Prisma `where`, and **caps the requested count**
+to the size of the filtered pool — so a 12-word selection never has to
+pad or repeat to fill a 50-question request. The capped value comes
+back as `effectiveCount` in the response.
+
+The "How many questions?" card has preset chips (`10`, `20`, `30`,
+`50`, `100`) **plus a labelled custom number input** clamped to
+`[1, 200]`. Both write the same single `count` state — picking a
+preset updates the input, typing in the input deselects all presets.
+The auto-cap helper still applies when the typed value exceeds the
+selection's pool size.
 
 Launchers cache the generated payload in `sessionStorage["quiz"]` as
 `{ mode, questions, training, generate, consumed }`, where `generate`
@@ -487,6 +517,68 @@ with the same arrangement for perfect-score farming.
 - After a run finishes (ranked or training), the client clears
   `sessionStorage["quiz"]` so revisiting `/quiz/play` requires a fresh
   launcher flow.
+
+#### Reading mode (kana)
+
+A passive, dojo-flavored reading drill picked from the top-level
+Session mode card on `/quiz/kana`. Designed for warm-up reps where the
+learner sounds out a word, then has the romaji + English glossed for
+them with native audio — no input required, no scoring pressure.
+
+- **4 stages by syllable length** (mora, counted with `splitMora()`):
+  Stage 1 = 2 mora, Stage 2 = 3 mora, Stage 3 = 4 mora, Final Stage
+  = 5 mora. Stage metadata + the day-of-cycle math live in
+  [`src/lib/reading.ts`](src/lib/reading.ts) (client-safe), the
+  Prisma-backed deck loader lives in
+  [`src/lib/reading-server.ts`](src/lib/reading-server.ts), and
+  [`src/components/reading-stage-picker.tsx`](src/components/reading-stage-picker.tsx)
+  draws the picker.
+- **Daily set release.** Each stage has 5 sets of 50 words. On
+  weekdays the active set auto-rotates by the user's local weekday
+  (Mon = set 1, Tue = 2, … Fri = 5). On Sat / Sun the picker exposes
+  a chip rail so the user picks any 1–5 to replay. Day-of-cycle is
+  computed via `Intl.DateTimeFormat` in the user's IANA timezone
+  resolved through `[src/lib/time.ts](src/lib/time.ts)` so the
+  rollover lines up with streaks and daily quests.
+- **Per-card loop** (`src/app/quiz/kana/reading/reading-runner.tsx`):
+  - 4-second show window — kana only, large centered card.
+  - At 1.0s and 2.0s, a soft sine `tickSoft()` blip; at 3.0s, a
+    brighter `tickFinal()` triangle to telegraph reveal. Both live in
+    `[src/lib/feedback.ts](src/lib/feedback.ts)` and are routed
+    through the existing AudioContext + global enable gate.
+  - 2.5-second reveal window — the same card grows a dashed-divider
+    second row showing romaji + English; `speakJapanese()` plays once
+    automatically and a `Volume2` button (or `R` keypress) replays it.
+  - Auto-advance to the next card. After 50, a "Stage complete" card
+    offers replay or pick-another-stage.
+  - Space (or tapping the card) toggles pause; Esc exits to the
+    setup page.
+- **Refresh = re-shuffle.** No `sessionStorage` persistence. Today's
+  50 words for the chosen (stage, set) are stable, but the server
+  Fisher-Yates-shuffles on every fetch (in
+  `getReadingWordsForStageAndSet`) so a refresh hands the runner a
+  fresh order. The client deliberately does **not** re-shuffle —
+  doing so would mismatch the SSR render and the first client paint
+  of the kana card and trip a React hydration error.
+- **Not persisted.** Reading mode intentionally does **not** write
+  `QuizAttempt`, advance SRS, grant coins, or tick the streak. It
+  sits parallel to Ranked / Training rather than under it.
+- **Word bank lives in Postgres.** The `ReadingWord` table holds
+  4 stages × 5 dayOfCycle slots × 50 words = 1000 rows. Seeded from
+  [`prisma/seed/reading-words.ts`](prisma/seed/reading-words.ts) via
+  `npx prisma db seed`; the seed runner asserts every row's mora
+  count against `splitMora(display).length` before any DB write so
+  bad content fails loudly. Future admin tooling
+  ([roadmap 12](.cursor/docs/roadmap/12-words-transfer-to-database.md))
+  will let ops edit / add / delete rows live without a redeploy.
+
+**Routes**
+
+- `/quiz/kana` — setup page (Server Component shell + client
+  switcher).
+- `/quiz/kana/reading?stage=N[&set=M]` — play screen. `set` is
+  required on Sat / Sun and ignored on weekdays (the server
+  derives it from the local weekday).
 
 ### Spaced Repetition (SRS)
 
@@ -513,6 +605,16 @@ Implemented in `src/lib/srs.ts`. Leitner-style with **6 levels**:
   the item has at least one study interaction (`KanaView`, `KanjiView`, or
   `CardView`) but no SRS row yet. Once the user is quizzed and gets `level >= 1`,
   the SRS level becomes the source of truth and Started is suppressed.
+- **Orphan invariant.** `ReviewState.itemKey` is a stringified `Word.id`
+  (or kana/kanji char) and is **not** FK-protected — Prisma can't cascade.
+  Any code path that deletes a `Word` MUST also delete the matching
+  `ReviewState` row in the same transaction (see
+  `DELETE /api/words/[id]` for the reference pattern), otherwise the
+  Spaced Review card over-counts and clicking through lands on
+  "Nothing due right now". Both `getDueCount()` and `getDueItems()`
+  defensively filter to live items, and `/api/study/review` runs a
+  one-shot `sweepOrphans()` to hard-delete any leftovers it observes,
+  but the transactional delete on the write path is the real fix.
 
 ### Streak & daily goal
 
@@ -956,6 +1058,7 @@ All tables are keyed by `userId` (Clerk id) for tenancy isolation.
 | `CoinLedger` | Append-only coin history. Balance = sum(amount). Dedup'd by `dedupKey`. |
 | `DojoProgress` | Per-section Dojo progress (`bestScorePct`, `attempts`, `passedAt`). Unique on `(userId, lessonId, section)`. |
 | `Notification` | In-app bell entries. `kind` + `payload` (JSONB) + `dedupKey` (idempotency). Indexed on `(userId, createdAt)` and `(userId, readAt)`. |
+| `ReadingWord` | **Global** (not per-user) catalog for the kana quiz Reading mode. 4 stages × 5 daily-cycle slots × 50 words = 1000 rows, seeded by `npx prisma db seed`. Unique on `(stage, dayOfCycle, sortIndex)` so re-seeds + future admin edits never collide. Indexed on `(stage, dayOfCycle)` for the per-set fetch. |
 
 Migrations live in `prisma/migrations/`. Use `npx prisma migrate dev --name <slug>`
 when you change the schema and `npx prisma migrate deploy` in CI/prod.
@@ -975,7 +1078,7 @@ All endpoints require Clerk auth via `requireUserId()` and return JSON.
 | `/api/cards/view` | POST | Log a vocab `CardView`. |
 | `/api/kana/view` | POST | Log a kana table tap (`KanaView`). |
 | `/api/kanji/view` | POST | Log a kanji study interaction (`KanjiView`). |
-| `/api/quiz/generate` | POST | Build a quiz set with smart sampling. Optional `vocabFilter` (`{ kind: "batch", batchId }` or `{ kind: "imported" }`) narrows the vocab pool to a category or to non-catalog words; the server caps `count` to the filtered pool size and returns `effectiveCount`. |
+| `/api/quiz/generate` | POST | Build a quiz set with smart sampling. Optional `vocabFilter: { batchIds?: number[]; includeImported?: boolean }` narrows the vocab pool to one or more category batches and/or to non-catalog (imported) words; unowned `batchIds` are silently dropped. The server caps `count` to the filtered pool size and returns `effectiveCount`. |
 | `/api/quiz/submit` | POST | Persist results, advance SRS, award coins, evaluate achievements. |
 | `/api/quiz/redo-missed` | POST | Build a quiz from the user's recent misses. |
 | `/api/dojo/submit-section` | POST | Re-grade a Dojo section drill, upsert `DojoProgress`, log a `QuizAttempt`, award coins, evaluate achievements. |
@@ -991,6 +1094,7 @@ All endpoints require Clerk auth via `requireUserId()` and return JSON.
 | `/api/notifications` | GET | Latest in-app notifications + unread count (defaults to 10, max 50). Called by the topbar bell on mount, on bus refresh (in-tab + cross-tab), and on dropdown open after a 30s freshness window — no polling timer. |
 | `/api/notifications/[id]/read` | POST | Mark a single notification read; returns the updated unread count. |
 | `/api/notifications/read-all` | POST | Mark every unread notification read in one updateMany. |
+| `/api/reading/words` | GET | Today's deck for the kana Reading mode. Required `stage` (1..4); optional `set` (1..5) used only on Sat / Sun (weekday calls derive the set from the user's local weekday and ignore `set`). Returns `{ stage, set, isAutoSet, weekdayLabel, words[] }` with `words` server-shuffled. |
 
 > **Every endpoint above is rate-limited per-user** via
 > [`src/lib/rate-limit.ts`](src/lib/rate-limit.ts). When a user exceeds
@@ -1174,6 +1278,12 @@ A few patterns the codebase leans on, kept here so refactors don't undo them:
   feature change must update the matching section here in the same change.
   Enforced by `.cursor/rules/readme-maintenance.mdc` (always-applied agent
   rule with section map + checklist).
+- **Local-only practice modes don't touch server state.** When a feature is
+  intentionally a warm-up (no scoring, no SRS, no streak, no coins), it
+  must skip `/api/quiz/submit`, skip `notify*` calls, and skip any
+  `CardView` / `KanaView` / `KanjiView` writes. Reading mode (kana) is
+  the canonical example; new local-only modes should follow the same
+  shape so the streak / coin contracts stay obvious to readers.
 
 ---
 
@@ -1192,6 +1302,9 @@ If something on a page feels off, the source-of-truth file is usually one of:
 | Dojo curriculum (Genki I + II) | `src/lib/dojo.ts` |
 | Dojo lesson content (vocab + grammar + listening + drill banks; vocab `furigana` segments) | `src/lib/dojo-content.ts` |
 | Kana → Hepburn romaji helpers (mora splitter for the Dojo vocab card) | `src/lib/japanese-romaji.ts` |
+| Reading mode (kana) — stage metadata, day-of-cycle math, shuffle, types (client-safe) | `src/lib/reading.ts` |
+| Reading mode (kana) — DB-backed deck loader (server-only) | `src/lib/reading-server.ts` |
+| Reading mode word bank (seed + assertions) | `prisma/seed/reading-words.ts`, `prisma/seed.ts` |
 | Per-user rate limits | `src/lib/rate-limit.ts` |
 | `formatInt` (locale-stable numbers in client components) | `src/lib/utils.ts` |
 | `/progress` data shape (used by both the page and the API) | `src/lib/progress-stats.ts` |

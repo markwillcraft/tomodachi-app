@@ -92,6 +92,17 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  await prisma.word.delete({ where: { id } });
+  // ReviewState is keyed by `(userId, itemType, itemKey)` with no FK to
+  // Word, so Prisma can't cascade. Deleting the word without also
+  // dropping its matching review row would orphan that row — and
+  // `getDueCount` would then keep counting items that `/api/study/review`
+  // can no longer materialize, surfacing as "Review N due" → click →
+  // "Nothing due right now". Atomic deleteMany + delete prevents that.
+  await prisma.$transaction([
+    prisma.reviewState.deleteMany({
+      where: { userId, itemType: "vocab", itemKey: String(id) },
+    }),
+    prisma.word.delete({ where: { id } }),
+  ]);
   return NextResponse.json({ ok: true });
 }

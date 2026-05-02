@@ -23,6 +23,7 @@ rule governs shipped behaviour in `README.md`). Roadmap docs describe
 | 03 | [Friends & Social](./03-friends-and-social.md) | P1 | L | Proposed |
 | 08 | [Membership (Lifetime)](./08-membership.md) | P1 | M | Proposed |
 | 09 | [Tiers & Trial](./09-tiers-and-trial.md) | P1 | M | Proposed |
+| 12 | [Words → Database](./12-words-transfer-to-database.md) | P1 | L | Proposed |
 | 05 | [Email/SMS Reminders](./05-email-sms-reminders.md) | P2 | M | Proposed |
 | 10 | [Furigana Backfill](./10-furigana-backfill.md) | P2 | M | Proposed |
 | 07 | [Study Buddy (Video)](./07-study-buddy-video.md) | P2 | XL | Proposed |

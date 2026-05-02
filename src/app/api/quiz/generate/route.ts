@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import {
   generateQuestions,
   type QuizMode,
@@ -44,9 +45,10 @@ export async function POST(req: Request) {
       kanaScript?: KanaScript;
       kanaGroups?: string[];
       kanjiChars?: string[];
-      vocabFilter?:
-        | { kind: "batch"; batchId: number }
-        | { kind: "imported" };
+      vocabFilter?: {
+        batchIds?: number[];
+        includeImported?: boolean;
+      };
     };
 
   if (typeof count !== "number" || count < 1 || count > 200) {
@@ -59,17 +61,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid mode" }, { status: 400 });
   }
 
+  const parsedFilter = parseVocabFilter(vocabFilter);
+  if (parsedFilter === "invalid") {
+    return NextResponse.json({ error: "Invalid vocabFilter" }, { status: 400 });
+  }
+
   // Vocab pool — defaults to the user's full library, but a `vocabFilter`
-  // narrows it to a specific category batch or to "imported" words. We
-  // do the filter inline (rather than extending `getWordsWithStats`) so
-  // the helper stays focused; the per-word stats roll-up is applied
-  // separately via `attachWordStats` so weighted sampling still favours
-  // missed words within the filtered pool.
-  const words = await loadVocabPool(userId, mode, vocabFilter);
+  // narrows it to one or more category batches and/or the user's
+  // imported (non-catalog) words. We do the filter inline (rather than
+  // extending `getWordsWithStats`) so the helper stays focused; the
+  // per-word stats roll-up is applied separately via `attachWordStats`
+  // so weighted sampling still favours missed words within the
+  // filtered pool.
+  const words = await loadVocabPool(userId, mode, parsedFilter);
   if (mode === "vocab" && words.length === 0) {
     return NextResponse.json(
       {
-        error: vocabFilter
+        error: parsedFilter
           ? "No words available for the selected category."
           : "No vocabulary words imported yet. Import some first.",
       },
@@ -132,47 +140,88 @@ export async function POST(req: Request) {
   return NextResponse.json({ questions, effectiveCount });
 }
 
+type ParsedVocabFilter = {
+  batchIds: number[];
+  includeImported: boolean;
+};
+
+// Validate + normalise the inbound `vocabFilter`. Returns:
+//  - `null` when no filter was supplied (or filter is empty → treat as "all"),
+//  - `"invalid"` for a malformed shape (caller maps to 400),
+//  - a normalised `ParsedVocabFilter` otherwise.
+function parseVocabFilter(
+  raw: { batchIds?: number[]; includeImported?: boolean } | undefined,
+): ParsedVocabFilter | null | "invalid" {
+  if (raw === undefined) return null;
+  if (raw === null || typeof raw !== "object") return "invalid";
+
+  const { batchIds, includeImported } = raw;
+
+  let cleanIds: number[] = [];
+  if (batchIds !== undefined) {
+    if (!Array.isArray(batchIds)) return "invalid";
+    if (!batchIds.every((id) => Number.isInteger(id) && id > 0)) {
+      return "invalid";
+    }
+    cleanIds = Array.from(new Set(batchIds));
+  }
+
+  let cleanImported = false;
+  if (includeImported !== undefined) {
+    if (typeof includeImported !== "boolean") return "invalid";
+    cleanImported = includeImported;
+  }
+
+  if (cleanIds.length === 0 && !cleanImported) return null;
+  return { batchIds: cleanIds, includeImported: cleanImported };
+}
+
 async function loadVocabPool(
   userId: string,
   mode: QuizMode,
-  vocabFilter:
-    | { kind: "batch"; batchId: number }
-    | { kind: "imported" }
-    | undefined,
+  vocabFilter: ParsedVocabFilter | null,
 ) {
-  if (mode !== "vocab" || !vocabFilter) {
+  if (mode !== "vocab" || vocabFilter === null) {
     return getWordsWithStats(userId);
   }
-  if (vocabFilter.kind === "batch") {
-    if (typeof vocabFilter.batchId !== "number") return [];
-    // Defensive: confirm the batch belongs to this user before pulling
-    // its words. Without this an attacker could enumerate batchIds.
-    const owned = await prisma.importBatch.findFirst({
-      where: { id: vocabFilter.batchId, userId },
+
+  // Defensive ownership check. Drop any batch ids the user doesn't own
+  // before they reach the `where` so an attacker probing ids can't peek
+  // into another tenant's data, and so a stale id from the client (e.g.
+  // a batch deleted in another tab) just narrows the pool instead of
+  // failing the whole request.
+  let ownedBatchIds: number[] = [];
+  if (vocabFilter.batchIds.length > 0) {
+    const owned = await prisma.importBatch.findMany({
+      where: { userId, id: { in: vocabFilter.batchIds } },
       select: { id: true },
     });
-    if (!owned) return [];
-    const rows = await prisma.word.findMany({
-      where: { userId, batchId: vocabFilter.batchId },
-      orderBy: { createdAt: "desc" },
-    });
-    return attachWordStats(userId, rows);
+    ownedBatchIds = owned.map((b) => b.id);
+    if (ownedBatchIds.length !== vocabFilter.batchIds.length) {
+      console.warn(
+        `[quiz/generate] dropped ${
+          vocabFilter.batchIds.length - ownedBatchIds.length
+        } unowned batchId(s) for user ${userId}`,
+      );
+    }
   }
-  if (vocabFilter.kind === "imported") {
+
+  const or: Prisma.WordWhereInput[] = [];
+  if (ownedBatchIds.length > 0) {
+    or.push({ batchId: { in: ownedBatchIds } });
+  }
+  if (vocabFilter.includeImported) {
     // Mirror the inverse rule used on `/study/vocab`: any word that
     // isn't part of a `source: "category"` batch — covers manual
     // imports plus pre-feature orphans (`batchId IS NULL`).
-    const rows = await prisma.word.findMany({
-      where: {
-        userId,
-        OR: [
-          { batchId: null },
-          { batch: { source: { not: "category" } } },
-        ],
-      },
-      orderBy: { createdAt: "desc" },
-    });
-    return attachWordStats(userId, rows);
+    or.push({ batchId: null });
+    or.push({ batch: { source: { not: "category" } } });
   }
-  return [];
+  if (or.length === 0) return [];
+
+  const rows = await prisma.word.findMany({
+    where: { userId, OR: or },
+    orderBy: { createdAt: "desc" },
+  });
+  return attachWordStats(userId, rows);
 }
