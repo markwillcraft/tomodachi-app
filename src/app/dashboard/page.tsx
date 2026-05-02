@@ -15,7 +15,7 @@ import type { LucideIcon } from "lucide-react"
 import { auth, currentUser } from "@clerk/nextjs/server"
 import { prisma } from "@/lib/prisma"
 import { getStreak } from "@/lib/streak"
-import { getCoinSummary, getDailyQuests } from "@/lib/coins"
+import { getCoinSummary, getDailyQuestsResult } from "@/lib/coins"
 import { getUserPreferences } from "@/lib/time"
 import { StreakWidget } from "@/components/streak-widget"
 import { DailyQuests } from "@/components/daily-quests"
@@ -38,7 +38,7 @@ export default async function DashboardPage() {
     recentAttempts,
     quizCount,
     streak,
-    quests,
+    questsResult,
     coinSummary,
     prefs,
   ] = await Promise.all([
@@ -56,10 +56,11 @@ export default async function DashboardPage() {
     // this in O(index) so it stays cheap as history grows.
     prisma.quizAttempt.count({ where: { userId } }),
     getStreak(userId),
-    getDailyQuests(userId),
+    getDailyQuestsResult(userId),
     getCoinSummary(userId),
     getUserPreferences(userId),
   ])
+  const quests = questsResult.quests
   const totalAnswered = recentAttempts.reduce((s, a) => s + a.total, 0)
   const totalCorrect = recentAttempts.reduce((s, a) => s + a.correct, 0)
   const recentAccuracy =
@@ -248,6 +249,8 @@ export default async function DashboardPage() {
 
       <DailyQuests
         quests={quests}
+        tier={questsResult.tier}
+        focus={questsResult.focus}
         earnedToday={coinSummary.earnedToday}
         resetsAt={coinSummary.resetsAt}
       />

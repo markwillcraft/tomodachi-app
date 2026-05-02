@@ -1,17 +1,66 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Coins, ListChecks, Timer } from "lucide-react";
+import {
+  BookOpen,
+  Check,
+  Coins,
+  Keyboard,
+  Languages,
+  ListChecks,
+  Sparkles,
+  Star,
+  Target,
+  Timer,
+  Trophy,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { DailyQuest } from "@/lib/coins";
+import type { DailyQuest, DailyQuestId } from "@/lib/coins";
+
+// Per-quest icon mapping. Falls back to a generic Target icon for
+// any future quest id we haven't mapped yet, so the resolver in
+// `coins.ts` can ship a new quest type without breaking the UI.
+const QUEST_ICONS: Record<DailyQuestId, LucideIcon> = {
+  first_quiz: Star,
+  answer_questions: Target,
+  study_cards: BookOpen,
+  study_kanji: Languages,
+  score_90_quiz: Sparkles,
+  kana_reading_session: BookOpen,
+  kana_drill_session: Keyboard,
+  all_quests: Trophy,
+};
+
+const TIER_LABEL: Record<string, string> = {
+  starter: "Starter",
+  steady: "Steady",
+  committed: "Committed",
+  power: "Power",
+};
+
+const FOCUS_LABEL: Record<string, string> = {
+  kana: "Kana focus",
+  kanji: "Kanji focus",
+  vocab: "Vocab focus",
+  balanced: "Balanced",
+};
 
 type Props = {
   quests: DailyQuest[];
   earnedToday: number;
   resetsAt: string; // ISO string of the user's next local midnight
+  tier?: string;
+  focus?: string;
 };
 
-export function DailyQuests({ quests, earnedToday, resetsAt }: Props) {
+export function DailyQuests({
+  quests,
+  earnedToday,
+  resetsAt,
+  tier,
+  focus,
+}: Props) {
   const completed = quests.filter((q) => q.completed).length;
   const totalReward = quests.reduce((s, q) => s + q.reward, 0);
   const claimedReward = quests
@@ -47,6 +96,24 @@ export function DailyQuests({ quests, earnedToday, resetsAt }: Props) {
               <p className="text-sm text-muted-foreground">
                 Earn coins by finishing each quest. They reset every day.
               </p>
+              {tier && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span
+                    title="Your tier scales today's quest targets. It's recomputed each week from your activity."
+                    className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/60 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                  >
+                    Tier · {TIER_LABEL[tier] ?? tier}
+                  </span>
+                  {focus && (
+                    <span
+                      title="Your focus area rotates which quests appear today."
+                      className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground"
+                    >
+                      {FOCUS_LABEL[focus] ?? focus}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
@@ -97,6 +164,7 @@ function QuestRow({ quest }: { quest: DailyQuest }) {
     100,
     Math.round((quest.current / quest.target) * 100),
   );
+  const Icon = QUEST_ICONS[quest.id] ?? Target;
   return (
     <li
       className={cn(
@@ -121,11 +189,19 @@ function QuestRow({ quest }: { quest: DailyQuest }) {
           <div className="min-w-0">
             <div
               className={cn(
-                "truncate text-sm font-semibold",
+                "flex items-center gap-1.5 truncate text-sm font-semibold",
                 quest.completed && "line-through opacity-70",
               )}
             >
-              {quest.title}
+              <Icon
+                className={cn(
+                  "size-3.5 shrink-0",
+                  quest.completed
+                    ? "text-emerald-600 dark:text-emerald-300"
+                    : "text-amber-600 dark:text-amber-300",
+                )}
+              />
+              <span className="truncate">{quest.title}</span>
             </div>
             <div className="truncate text-xs text-muted-foreground">
               {quest.description}

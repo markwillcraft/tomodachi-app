@@ -669,20 +669,80 @@ Reward table (`COIN_RULES` in `src/lib/coins.ts`):
 
 ### Daily quests
 
-A handful of higher-value goals that reset at local midnight. Defined in
-`DAILY_QUEST_DEFS`:
+Higher-value goals that reset at local midnight. The list is **progressive**:
+the catalog is curated in code, but each user gets a per-day subset whose
+*targets* are scaled by their engagement **tier** and whose *set* is rotated
+by their content **focus**. Same `(tier, focus, userId, dayKey)` always
+yields the same list — the resolver in
+[`src/lib/coins.ts`](src/lib/coins.ts) is pure.
 
-| Quest | Target | Reward |
-|---|---|---|
-| Take a quiz | 1 quiz | +25 |
-| Answer 50 quiz questions | 50 | +50 |
-| Study 50 vocab cards | 50 | +50 |
-| Ace a quiz (≥90%) | 1 | +50 |
-| (extras may be added in `coins.ts`) | | |
+**Tiers** (`src/lib/quest-tier.ts`):
 
-`getDailyQuests()` computes progress; the dashboard surfaces them in the
-**Daily quests** card. Rewards are auto-claimed when crossed
-(`syncTodaysCoins()`), with the dedup key `quest:<YYYY-MM-DD>:<questId>`.
+| Tier | Threshold |
+|---|---|
+| `starter` | <50 quiz Qs/wk OR <3 active days |
+| `steady` | 50–200 Qs OR 3–5 active days |
+| `committed` | 200–500 Qs OR 5–7 active days |
+| `power` | 500+ Qs AND 7 active days |
+
+Tier × target table for the volumetric quests:
+
+| Quest | starter | steady | committed | power |
+|---|---:|---:|---:|---:|
+| `answer_questions` | 20 | 50 | 100 | 150 |
+| `study_cards` | 20 | 50 | 100 | 150 |
+| `study_kanji` | 5 | 15 | 30 | 50 |
+
+Rewards scale with target (sub-linear so a power user earns more *per day*
+but not 5x per question): starter 30, steady 50, committed 80, power 110 for
+`answer_questions` / `study_cards`; 25 / 40 / 65 / 90 for `study_kanji`.
+
+**Focus** picks which secondary quests appear:
+
+| Focus | Adds |
+|---|---|
+| `kana` | `kana_reading_session` + `kana_drill_session` (one shot each, +35 coins) |
+| `kanji` | `study_kanji` + `score_90_quiz` (+30) |
+| `vocab` | `score_90_quiz`; `study_cards` is also promoted to the scaled core slot |
+| `balanced` | 2 picks rotated daily via `hash(userId + dayKey)` from `[kana_reading_session, kana_drill_session, study_kanji, score_90_quiz]` |
+
+Every user's list opens with `first_quiz` (target 1, +25) and closes with
+the `all_quests` capstone (+100; target = number of preceding quests).
+
+**Tier resolution** runs at most once per user per **week** and caches
+to the `UserQuestTier` row with a 7-day `validUntil`. The path:
+
+1. `getOrComputeUserQuestTier(userId)` — checks the cache, returns immediately
+   if `validUntil > now`.
+2. Compute `getWeeklyEngagement(userId)` — last-7-local-days snapshot
+   (`src/lib/weekly-engagement.ts`).
+3. **AI path** — if `GEMINI_API_KEY` is set AND the `ai` rate-limit bucket
+   allows AND total weekly activity ≥ 10 events, call
+   `gemini.classifyQuestTier(signals)` for a `{tier, focus}` JSON. ~150
+   tokens in / ~30 tokens out. Stored with `source: "ai"`.
+4. **Rule fallback** — `ruleClassifyTier(signals)` always works (no AI key,
+   network down, bucket exhausted, very-low-activity user, AI returned a
+   bad shape). Stored with `source: "rule_fallback"`.
+
+The dashboard surfaces the catalog in the **Daily quests** card with a
+small `Tier · …` chip so users can see *why* their list looks different
+than yesterday's. The card icon per quest comes from the
+`QUEST_ICONS` map in `src/components/daily-quests.tsx`.
+
+Reading mode and Muscle Memory drills count toward their respective quests
+via dedicated session rows: `ReadingSession` (created by
+`POST /api/reading/session-complete`) and `KanaDrillSession` (created by
+`POST /api/study/kana-drill`). Both rows are unique on a client-generated
+key (`sessionKey` / `drillKey`) so a network retry can't double-count.
+
+`getDailyQuestsResult()` returns `{tier, focus, source, quests}`; the
+back-compat `getDailyQuests()` returns just the quest list. Rewards are
+auto-claimed when crossed (`syncTodaysCoins()`, `claimEligibleQuests()`),
+with the dedup key `quest:<YYYY-MM-DD>:<questId>`.
+
+The full design (data flow diagram, open questions like AI opt-out and
+capstone scaling) lives in
+[`.cursor/docs/roadmap/13-progressive-daily-quests.md`](.cursor/docs/roadmap/13-progressive-daily-quests.md).
 
 ### Achievements
 
@@ -1059,6 +1119,9 @@ All tables are keyed by `userId` (Clerk id) for tenancy isolation.
 | `DojoProgress` | Per-section Dojo progress (`bestScorePct`, `attempts`, `passedAt`). Unique on `(userId, lessonId, section)`. |
 | `Notification` | In-app bell entries. `kind` + `payload` (JSONB) + `dedupKey` (idempotency). Indexed on `(userId, createdAt)` and `(userId, readAt)`. |
 | `ReadingWord` | **Global** (not per-user) catalog for the kana quiz Reading mode. 4 stages × 5 daily-cycle slots × 50 words = 1000 rows, seeded by `npx prisma db seed`. Unique on `(stage, dayOfCycle, sortIndex)` so re-seeds + future admin edits never collide. Indexed on `(stage, dayOfCycle)` for the per-set fetch. |
+| `ReadingSession` | One row per finished Reading session. Persisted so the `kana_reading_session` daily quest can count "did the user do one today?" without inferring from coin events. Unique on `sessionKey` (client UUID) makes retries idempotent. Indexed on `(userId, completedAt)`. |
+| `KanaDrillSession` | One row per finished Muscle Memory drill, persisted alongside the existing coin grant. Unique on `drillKey` (the same UUID the drill component already mints). Indexed on `(userId, completedAt)`. |
+| `UserQuestTier` | Cached `(tier, focus)` classification for the progressive daily quest resolver. One row per user, recomputed at most once per week (`validUntil` 7-day TTL). `source` is `"ai"` or `"rule_fallback"`; `signals` keeps the weekly engagement snapshot used for the classification (debug only). |
 
 Migrations live in `prisma/migrations/`. Use `npx prisma migrate dev --name <slug>`
 when you change the schema and `npx prisma migrate deploy` in CI/prod.
@@ -1083,10 +1146,10 @@ All endpoints require Clerk auth via `requireUserId()` and return JSON.
 | `/api/quiz/redo-missed` | POST | Build a quiz from the user's recent misses. |
 | `/api/dojo/submit-section` | POST | Re-grade a Dojo section drill, upsert `DojoProgress`, log a `QuizAttempt`, award coins, evaluate achievements. |
 | `/api/study/review` | GET | Fetch the user's SRS-due items as a quiz set. |
-| `/api/study/kana-drill` | POST | Award coins for the muscle-memory drill. |
+| `/api/study/kana-drill` | POST | Persist a `KanaDrillSession` row + award coins for the muscle-memory drill. Idempotent on `drillKey`. |
 | `/api/streak/freeze` | GET | Current freeze inventory. |
 | `/api/streak/freeze/use` | POST | Spend a freeze on a specific past day. |
-| `/api/coins` | GET | Balance + today's earnings. |
+| `/api/coins` | GET | Balance + today's earnings + the progressive daily quest list, plus `tier` / `focus` / `tierSource` from the resolver. |
 | `/api/profile/timezone` | POST | Persist the browser's IANA timezone. |
 | `/api/profile/preferences` | POST | Toggle `autoFreezeStreak` etc. |
 | `/api/progress/stats` | GET | Backing data for charts on `/progress`. |
@@ -1095,6 +1158,7 @@ All endpoints require Clerk auth via `requireUserId()` and return JSON.
 | `/api/notifications/[id]/read` | POST | Mark a single notification read; returns the updated unread count. |
 | `/api/notifications/read-all` | POST | Mark every unread notification read in one updateMany. |
 | `/api/reading/words` | GET | Today's deck for the kana Reading mode. Required `stage` (1..4); optional `set` (1..5) used only on Sat / Sun (weekday calls derive the set from the user's local weekday and ignore `set`). Returns `{ stage, set, isAutoSet, weekdayLabel, words[] }` with `words` server-shuffled. |
+| `/api/reading/session-complete` | POST | Persist a finished Reading session (`{ sessionKey, stage, set, cardsShown, durationMs }`) and re-evaluate daily quests so `kana_reading_session` claims if eligible. Idempotent on `sessionKey`. |
 
 > **Every endpoint above is rate-limited per-user** via
 > [`src/lib/rate-limit.ts`](src/lib/rate-limit.ts). When a user exceeds
@@ -1292,7 +1356,9 @@ If something on a page feels off, the source-of-truth file is usually one of:
 | Surface | File |
 |---|---|
 | Streak / freezes | `src/lib/streak.ts`, `src/lib/streak-freeze.ts` |
-| Coins / quests | `src/lib/coins.ts` |
+| Coins / quests (catalog + resolver) | `src/lib/coins.ts` |
+| Daily-quest tier classification (AI + rule fallback) | `src/lib/quest-tier.ts` |
+| Weekly engagement aggregator | `src/lib/weekly-engagement.ts` |
 | SRS scheduling | `src/lib/srs.ts` |
 | Achievements catalog | `src/lib/achievements.ts` |
 | N5 Mastery model | `src/lib/n5-paths.ts` |

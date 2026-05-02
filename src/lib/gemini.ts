@@ -134,6 +134,97 @@ export type ProgressSummary = {
   }>;
 };
 
+// Used by the progressive daily-quest tier classifier
+// (`src/lib/quest-tier.ts`). Tier vocabulary mirrors the rule-based
+// fallback so the resolver doesn't care which path produced the row.
+export type QuestTierClassification = {
+  tier: "starter" | "steady" | "committed" | "power";
+  focus: "kana" | "kanji" | "vocab" | "balanced";
+};
+
+const TIER_VALUES = ["starter", "steady", "committed", "power"] as const;
+const FOCUS_VALUES = ["kana", "kanji", "vocab", "balanced"] as const;
+
+function isTier(v: unknown): v is QuestTierClassification["tier"] {
+  return typeof v === "string" && (TIER_VALUES as readonly string[]).includes(v);
+}
+function isFocus(v: unknown): v is QuestTierClassification["focus"] {
+  return typeof v === "string" && (FOCUS_VALUES as readonly string[]).includes(v);
+}
+
+export type WeeklyEngagementForAI = {
+  quizAnswered: number;
+  quizAccuracy: number;
+  quizAttempts: number;
+  cardsViewed: number;
+  kanjiViewed: number;
+  kanaReadingSessions: number;
+  kanaDrillSessions: number;
+  dojoSectionsPassed: number;
+  activeDays: number;
+};
+
+/**
+ * Classify a user into one of four engagement tiers + a content
+ * focus area, given a weekly activity snapshot. Used to scale daily
+ * quest targets and rotate the quest set. Throws on any failure
+ * (missing key, network, malformed response) — the caller in
+ * `quest-tier.ts` catches and falls back to the deterministic
+ * rule classifier.
+ *
+ * One LLM call per user per week (cached for 7 days in
+ * UserQuestTier.validUntil), so the cost and latency footprint stay
+ * tiny — but we still go through the `ai` rate-limit bucket at the
+ * call site.
+ */
+export async function classifyQuestTier(
+  signals: WeeklyEngagementForAI,
+): Promise<QuestTierClassification> {
+  const model = getModel();
+  const accuracyPct = Math.round(signals.quizAccuracy * 100);
+
+  const prompt = `You are calibrating a Japanese-learning app's daily quests for one user.
+
+Given their last 7 days of activity, classify them into ONE engagement tier and ONE content focus area. Respond with ONLY a JSON object: {"tier": "<tier>", "focus": "<focus>"}.
+
+Tier vocabulary (pick exactly one):
+- "starter": new or sporadic. <50 quiz questions/week OR fewer than 3 active days.
+- "steady": consistent casual use. 50-200 questions, 3-5 active days.
+- "committed": daily habit. 200-500 questions, 5-7 active days.
+- "power": power user. 500+ questions, every day.
+
+Focus vocabulary (pick exactly one):
+- "kana": user spends most of their effort on hiragana/katakana (Reading sessions, Muscle Memory drills, kana table taps).
+- "kanji": user spends most of their effort studying kanji.
+- "vocab": user mostly drills vocab cards and quiz questions.
+- "balanced": activity is spread across multiple areas with no clear lean.
+
+Last 7 days:
+- Active days: ${signals.activeDays} of 7
+- Quiz attempts: ${signals.quizAttempts}
+- Quiz questions answered: ${signals.quizAnswered}
+- Quiz accuracy: ${accuracyPct}%
+- Vocab cards viewed: ${signals.cardsViewed}
+- Kanji studied: ${signals.kanjiViewed}
+- Kana Reading sessions: ${signals.kanaReadingSessions}
+- Kana Muscle Memory drills: ${signals.kanaDrillSessions}
+- Dojo sections passed: ${signals.dojoSectionsPassed}`;
+
+  const result = await model.generateContent(prompt);
+  const text = result.response.text();
+  const parsed = extractJson(text);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("classifyQuestTier: expected JSON object");
+  }
+  const obj = parsed as { tier?: unknown; focus?: unknown };
+  if (!isTier(obj.tier) || !isFocus(obj.focus)) {
+    throw new Error(
+      `classifyQuestTier: bad shape ${JSON.stringify(parsed).slice(0, 120)}`,
+    );
+  }
+  return { tier: obj.tier, focus: obj.focus };
+}
+
 export async function generateTips(summary: ProgressSummary): Promise<string[]> {
   const model = getModel();
   const accuracy =

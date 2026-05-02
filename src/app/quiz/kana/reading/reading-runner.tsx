@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { apiFetch } from "@/lib/api-client";
 import { feedback } from "@/lib/feedback";
 import {
   getReadingStageMeta,
@@ -79,6 +80,22 @@ export function ReadingRunner({
   const tickTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const phaseStartRef = useRef<number>(0);
   const elapsedAtPauseRef = useRef<number>(0);
+
+  // Per-session id minted on mount. Sent to
+  // POST /api/reading/session-complete as the dedup key so a network
+  // retry / accidental remount doesn't double-claim today's
+  // `kana_reading_session` quest. Mirrors the `drillKey` pattern in
+  // `kana-muscle-memory.tsx`.
+  const sessionKeyRef = useRef<string>("");
+  const sessionStartRef = useRef<number>(0);
+  const reportedRef = useRef<string>("");
+  if (sessionKeyRef.current === "") {
+    sessionKeyRef.current =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `rs-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    sessionStartRef.current = Date.now();
+  }
 
   const current = deck[index];
   const phaseTotalMs =
@@ -220,6 +237,33 @@ export function ReadingRunner({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [replayAudio, router, togglePause]);
+
+  // Fire-and-forget POST when the user finishes the deck. Idempotent
+  // on `sessionKeyRef.current`, so React strict-mode double-invokes,
+  // accidental remounts, and network retries all collapse to one
+  // server-side row + one quest claim.
+  useEffect(() => {
+    if (!done) return;
+    const key = sessionKeyRef.current;
+    if (!key || reportedRef.current === key) return;
+    reportedRef.current = key;
+    const durationMs = Date.now() - sessionStartRef.current;
+    apiFetch("/api/reading/session-complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionKey: key,
+        stage,
+        set,
+        cardsShown: total,
+        durationMs,
+      }),
+    }).catch(() => {
+      // Non-blocking: the user already finished; we'll catch up on
+      // the next session if this one drops. Letting reportedRef stay
+      // set means we don't retry-spam from the same mount.
+    });
+  }, [done, set, stage, total]);
 
   if (done) {
     return (

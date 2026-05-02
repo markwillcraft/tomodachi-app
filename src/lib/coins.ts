@@ -1,5 +1,10 @@
 import { prisma } from "./prisma";
 import {
+  getOrComputeUserQuestTier,
+  type QuestFocus,
+  type QuestTier,
+} from "./quest-tier";
+import {
   getUserTimezone,
   localDayKey,
   localMidnight,
@@ -58,53 +63,33 @@ export const COIN_RULES = {
 } as const;
 
 // =====================================================================
-// Daily quests
+// Daily quests (progressive)
 // ---------------------------------------------------------------------
-// Higher-value milestones that reset every UTC day. Each quest has a
-// stable id so we can dedup the reward in the ledger as
-// "quest:<utcDate>:<id>". Targets reuse the existing streak goals when
-// possible so quests, streak, and dashboards all agree.
+// Each user gets a per-day quest list resolved from their `(tier, focus)`
+// pair (see src/lib/quest-tier.ts). Tier scales the TARGET on volumetric
+// quests; focus rotates which secondary quests appear. Two quests are
+// always present so the system stays familiar:
+//
+//   - `first_quiz`  — opener, target 1
+//   - `all_quests`  — capstone, target = N preceding quests
+//
+// Ledger dedup keys still take the form `quest:<localDay>:<questId>`,
+// so re-running the resolver mid-day cannot double-pay an already-
+// claimed quest. New quest ids minted by this rollout (`answer_questions`
+// instead of `answer_50_questions`, etc.) are deliberately *new* keys —
+// users who already claimed yesterday's quests under the old ids still
+// get to earn today's progressive set without conflict.
 // =====================================================================
 
-export const DAILY_QUEST_DEFS = [
-  {
-    id: "first_quiz",
-    title: "Take a quiz",
-    description: "Complete any quiz today",
-    target: 1,
-    reward: 25,
-  },
-  {
-    id: "answer_50_questions",
-    title: "Answer 50 quiz questions",
-    description: "Across any number of quizzes",
-    target: 50,
-    reward: 50,
-  },
-  {
-    id: "study_50_cards",
-    title: "Study 50 vocab cards",
-    description: "Flip through your library",
-    target: 50,
-    reward: 50,
-  },
-  {
-    id: "score_90_quiz",
-    title: "Ace a quiz",
-    description: "Score 90% or higher on any quiz",
-    target: 1,
-    reward: 30,
-  },
-  {
-    id: "all_quests",
-    title: "Complete every quest",
-    description: "Capstone bonus for finishing the daily list",
-    target: 1,
-    reward: 100,
-  },
-] as const;
-
-export type DailyQuestId = (typeof DAILY_QUEST_DEFS)[number]["id"];
+export type DailyQuestId =
+  | "first_quiz"
+  | "answer_questions"
+  | "study_cards"
+  | "study_kanji"
+  | "score_90_quiz"
+  | "kana_reading_session"
+  | "kana_drill_session"
+  | "all_quests";
 
 export type DailyQuest = {
   id: DailyQuestId;
@@ -116,6 +101,210 @@ export type DailyQuest = {
   completed: boolean;
   claimed: boolean;
 };
+
+type ScaledQuestId = "answer_questions" | "study_cards" | "study_kanji";
+
+// Per-tier targets for the scaled volumetric quests. Pulled from the
+// plan's tier × target table — tweak here to retune the whole game.
+const TIER_TARGET: Record<ScaledQuestId, Record<QuestTier, number>> = {
+  answer_questions: { starter: 20, steady: 50, committed: 100, power: 150 },
+  study_cards: { starter: 20, steady: 50, committed: 100, power: 150 },
+  study_kanji: { starter: 5, steady: 15, committed: 30, power: 50 },
+};
+
+// Per-tier rewards for the scaled volumetric quests. Slightly sub-linear
+// so a power user earns more *per-day* but not 5x more per-question.
+const TIER_REWARD: Record<ScaledQuestId, Record<QuestTier, number>> = {
+  answer_questions: { starter: 30, steady: 50, committed: 80, power: 110 },
+  study_cards: { starter: 30, steady: 50, committed: 80, power: 110 },
+  study_kanji: { starter: 25, steady: 40, committed: 65, power: 90 },
+};
+
+// Static rewards for the binary / one-shot quests.
+const FIXED_REWARD: Record<
+  Exclude<DailyQuestId, ScaledQuestId>,
+  number
+> = {
+  first_quiz: 25,
+  score_90_quiz: 30,
+  kana_reading_session: 35,
+  kana_drill_session: 35,
+  all_quests: 100,
+};
+
+// Resolved quest definition — what `buildQuests` consumes. Title /
+// description are pre-rendered with the tier-scaled target so the UI
+// shows "Answer 100 quiz questions" for a committed user without
+// having to know the tier rules.
+type ResolvedQuestDef = {
+  id: DailyQuestId;
+  title: string;
+  description: string;
+  target: number;
+  reward: number;
+};
+
+function questDef(
+  id: DailyQuestId,
+  tier: QuestTier,
+): ResolvedQuestDef {
+  switch (id) {
+    case "first_quiz":
+      return {
+        id,
+        title: "Take a quiz",
+        description: "Complete any quiz today",
+        target: 1,
+        reward: FIXED_REWARD.first_quiz,
+      };
+    case "answer_questions": {
+      const target = TIER_TARGET.answer_questions[tier];
+      return {
+        id,
+        title: `Answer ${target} quiz questions`,
+        description: "Across any number of quizzes",
+        target,
+        reward: TIER_REWARD.answer_questions[tier],
+      };
+    }
+    case "study_cards": {
+      const target = TIER_TARGET.study_cards[tier];
+      return {
+        id,
+        title: `Study ${target} vocab cards`,
+        description: "Flip through your library",
+        target,
+        reward: TIER_REWARD.study_cards[tier],
+      };
+    }
+    case "study_kanji": {
+      const target = TIER_TARGET.study_kanji[tier];
+      return {
+        id,
+        title: `Study ${target} kanji`,
+        description: "Tap kanji from any source today",
+        target,
+        reward: TIER_REWARD.study_kanji[tier],
+      };
+    }
+    case "score_90_quiz":
+      return {
+        id,
+        title: "Ace a quiz",
+        description: "Score 90% or higher on any quiz",
+        target: 1,
+        reward: FIXED_REWARD.score_90_quiz,
+      };
+    case "kana_reading_session":
+      return {
+        id,
+        title: "Complete a Reading session",
+        description: "Finish a kana Reading session in any stage",
+        target: 1,
+        reward: FIXED_REWARD.kana_reading_session,
+      };
+    case "kana_drill_session":
+      return {
+        id,
+        title: "Complete a Muscle Memory drill",
+        description: "Finish one Muscle Memory drill",
+        target: 1,
+        reward: FIXED_REWARD.kana_drill_session,
+      };
+    case "all_quests":
+      // Caller fills in target = preceding count.
+      return {
+        id,
+        title: "Complete every quest",
+        description: "Capstone bonus for finishing the daily list",
+        target: 1,
+        reward: FIXED_REWARD.all_quests,
+      };
+  }
+}
+
+// Tiny string hash — stable across runtimes, only used for daily
+// rotation seeds. Don't reach for crypto here; we want determinism +
+// near-zero overhead, not security.
+function hashSeed(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i += 1) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function deterministicPick<T>(pool: readonly T[], n: number, seed: number): T[] {
+  const arr = pool.slice();
+  let s = seed;
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    // Tiny LCG so we don't depend on Math.random and the rotation is
+    // stable across SSR / client / repeat calls within the same day.
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    const j = s % (i + 1);
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr.slice(0, n);
+}
+
+const BALANCED_POOL: readonly DailyQuestId[] = [
+  "kana_reading_session",
+  "kana_drill_session",
+  "study_kanji",
+  "score_90_quiz",
+];
+
+/**
+ * Picks today's quest catalog for `(tier, focus)`. Always returns at
+ * least 4 quests, ending in the `all_quests` capstone. Pure function:
+ * given the same inputs, always returns the same list.
+ *
+ * Layout: [first_quiz, scaled_core, ...focus_quests, all_quests]
+ *
+ *   - first_quiz: always-on opener (target 1).
+ *   - scaled_core: one of `answer_questions` / `study_cards`, tier-
+ *     scaled target. Defaults to `answer_questions`; vocab focus
+ *     swaps in `study_cards` since that's the user's lane.
+ *   - focus_quests: 1-2 quests picked by `focus`:
+ *     - kana → kana_reading_session + kana_drill_session
+ *     - kanji → study_kanji + score_90_quiz
+ *     - vocab → score_90_quiz (study_cards already promoted to core)
+ *     - balanced → 2 from BALANCED_POOL via `(userId, dayKey)` hash
+ *   - all_quests: capstone, target = (preceding count).
+ */
+export function resolveDailyQuests(
+  tier: QuestTier,
+  focus: QuestFocus,
+  userId: string,
+  dayKey: string,
+): ResolvedQuestDef[] {
+  const list: DailyQuestId[] = ["first_quiz"];
+
+  if (focus === "vocab") {
+    list.push("study_cards");
+  } else {
+    list.push("answer_questions");
+  }
+
+  if (focus === "kana") {
+    list.push("kana_reading_session", "kana_drill_session");
+  } else if (focus === "kanji") {
+    list.push("study_kanji", "score_90_quiz");
+  } else if (focus === "vocab") {
+    list.push("score_90_quiz");
+  } else {
+    // balanced: rotate two from the pool, stable per (userId, dayKey).
+    const picks = deterministicPick(
+      BALANCED_POOL,
+      2,
+      hashSeed(`${userId}:${dayKey}`),
+    );
+    list.push(...picks);
+  }
+
+  list.push("all_quests");
+  return list.map((id) => questDef(id, tier));
+}
 
 // =====================================================================
 // Helpers
@@ -229,19 +418,36 @@ type QuestProgress = {
   firstQuizCount: number;
   questionsAnswered: number;
   cardsStudied: number;
+  kanjiStudied: number;
+  kanaReadingSessions: number;
+  kanaDrillSessions: number;
   best90: boolean;
 };
 
 async function computeProgress(userId: string): Promise<QuestProgress> {
   const tz = await getUserTimezone(userId);
   const since = localMidnight(new Date(), tz);
-  const [attempts, cards] = await Promise.all([
+  // All counts are scoped to the user's local-midnight today. Reading +
+  // drill counts come from the dedicated session tables added in the
+  // quests_v2 migration; before that migration these tables didn't
+  // exist and the corresponding quests weren't resolvable, so there's
+  // nothing to backfill — yesterday's activity simply won't count.
+  const [attempts, cards, kanjis, readings, drills] = await Promise.all([
     prisma.quizAttempt.findMany({
       where: { userId, createdAt: { gte: since } },
       select: { total: true, correct: true },
     }),
     prisma.cardView.count({
       where: { userId, createdAt: { gte: since } },
+    }),
+    prisma.kanjiView.count({
+      where: { userId, createdAt: { gte: since } },
+    }),
+    prisma.readingSession.count({
+      where: { userId, completedAt: { gte: since } },
+    }),
+    prisma.kanaDrillSession.count({
+      where: { userId, completedAt: { gte: since } },
     }),
   ]);
 
@@ -258,21 +464,48 @@ async function computeProgress(userId: string): Promise<QuestProgress> {
     firstQuizCount,
     questionsAnswered,
     cardsStudied: cards,
+    kanjiStudied: kanjis,
+    kanaReadingSessions: readings,
+    kanaDrillSessions: drills,
     best90,
   };
 }
 
+function progressForQuest(id: DailyQuestId, p: QuestProgress): number {
+  switch (id) {
+    case "first_quiz":
+      return p.firstQuizCount;
+    case "answer_questions":
+      return p.questionsAnswered;
+    case "study_cards":
+      return p.cardsStudied;
+    case "study_kanji":
+      return p.kanjiStudied;
+    case "score_90_quiz":
+      return p.best90 ? 1 : 0;
+    case "kana_reading_session":
+      return p.kanaReadingSessions;
+    case "kana_drill_session":
+      return p.kanaDrillSessions;
+    case "all_quests":
+      // Filled in by buildQuests after counting completed siblings.
+      return 0;
+  }
+}
+
 function buildQuests(
+  defs: ResolvedQuestDef[],
   progress: QuestProgress,
   claimed: Set<string>,
 ): DailyQuest[] {
-  const quests: DailyQuest[] = DAILY_QUEST_DEFS.slice(0, -1).map((def) => {
-    let current = 0;
-    if (def.id === "first_quiz") current = progress.firstQuizCount;
-    else if (def.id === "answer_50_questions")
-      current = progress.questionsAnswered;
-    else if (def.id === "study_50_cards") current = progress.cardsStudied;
-    else if (def.id === "score_90_quiz") current = progress.best90 ? 1 : 0;
+  if (defs.length === 0) return [];
+  // Last def is always the capstone — handle it after we know how many
+  // siblings completed.
+  const head = defs.slice(0, -1);
+  const capDef = defs[defs.length - 1];
+
+  const quests: DailyQuest[] = head.map((def) => {
+    const current = progressForQuest(def.id, progress);
     const cappedCurrent = Math.min(current, def.target);
     return {
       id: def.id,
@@ -285,15 +518,17 @@ function buildQuests(
       claimed: claimed.has(def.id),
     };
   });
-  // Capstone: depends on every other quest being completed.
-  const allDone = quests.every((q) => q.completed);
-  const capDef = DAILY_QUEST_DEFS[DAILY_QUEST_DEFS.length - 1];
+
+  // Capstone target = number of preceding quests; completed iff every
+  // sibling completed. Surfaces nicely as e.g. "3 / 4" in the UI.
+  const completedSiblings = quests.filter((q) => q.completed).length;
+  const allDone = completedSiblings === quests.length;
   quests.push({
     id: capDef.id,
     title: capDef.title,
     description: capDef.description,
-    target: capDef.target,
-    current: allDone ? 1 : 0,
+    target: quests.length,
+    current: completedSiblings,
     reward: capDef.reward,
     completed: allDone,
     claimed: claimed.has(capDef.id),
@@ -301,10 +536,23 @@ function buildQuests(
   return quests;
 }
 
-export async function getDailyQuests(userId: string): Promise<DailyQuest[]> {
+export type DailyQuestsResult = {
+  tier: QuestTier;
+  focus: QuestFocus;
+  source: "ai" | "rule_fallback";
+  quests: DailyQuest[];
+};
+
+/** Build today's progressive quest list for a user. Resolves their
+ *  cached `(tier, focus)` (computing it first if needed), expands
+ *  the quest catalog, and applies live progress + claimed state. */
+export async function getDailyQuestsResult(
+  userId: string,
+): Promise<DailyQuestsResult> {
   const tz = await getUserTimezone(userId);
   const day = localDayKey(new Date(), tz);
-  const [progress, ledger] = await Promise.all([
+  const [tierRow, progress, ledger] = await Promise.all([
+    getOrComputeUserQuestTier(userId),
     computeProgress(userId),
     prisma.coinLedger.findMany({
       where: { userId, dedupKey: { startsWith: `quest:${day}:` } },
@@ -314,7 +562,22 @@ export async function getDailyQuests(userId: string): Promise<DailyQuest[]> {
   const claimed = new Set(
     ledger.map((row) => row.dedupKey.replace(`quest:${day}:`, "")),
   );
-  return buildQuests(progress, claimed);
+  const defs = resolveDailyQuests(tierRow.tier, tierRow.focus, userId, day);
+  const quests = buildQuests(defs, progress, claimed);
+  return {
+    tier: tierRow.tier,
+    focus: tierRow.focus,
+    source: tierRow.source,
+    quests,
+  };
+}
+
+/** Back-compat shim: returns just the quest list. Most call sites only
+ *  need this; the dashboard / daily-quests UI use the richer
+ *  `getDailyQuestsResult` to render the tier badge. */
+export async function getDailyQuests(userId: string): Promise<DailyQuest[]> {
+  const result = await getDailyQuestsResult(userId);
+  return result.quests;
 }
 
 // Award any newly-completed quests for today. Returns a list of

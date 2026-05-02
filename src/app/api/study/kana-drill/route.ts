@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireUserId } from "@/lib/auth-utils";
 import { awardForKanaDrill } from "@/lib/coins";
-import { enforceRateLimit } from "@/lib/rate-limit";
 import {
   notifyKanaDrillFinished,
   notifyQuestCompleted,
   type NotificationRow,
 } from "@/lib/notify";
+import { prisma } from "@/lib/prisma";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { getUserTimezone, localDayKey } from "@/lib/time";
 
 export const runtime = "nodejs";
@@ -48,6 +49,29 @@ export async function POST(req: Request) {
   }
 
   const safeKey = drillKey.slice(0, 64);
+
+  // Persist the session BEFORE awarding coins, so the
+  // `kana_drill_session` daily quest (which counts rows in this table)
+  // sees the new row when `awardForKanaDrill` re-runs the quest claim
+  // pass. Idempotent: P2002 on the unique drillKey = same drill being
+  // POSTed twice (e.g. retry), treat as success.
+  try {
+    await prisma.kanaDrillSession.create({
+      data: { userId, drillKey: safeKey, total, correct },
+    });
+  } catch (err) {
+    if (
+      !(
+        typeof err === "object" &&
+        err !== null &&
+        "code" in err &&
+        (err as { code: string }).code === "P2002"
+      )
+    ) {
+      throw err;
+    }
+  }
+
   const coins = await awardForKanaDrill(userId, safeKey, total, correct);
 
   // Self-study session ended → bell entry. Quest completions surface

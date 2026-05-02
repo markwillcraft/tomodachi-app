@@ -336,3 +336,71 @@ model CoinLedger {
   @@unique([userId, dedupKey])
   @@index([userId, createdAt])
 }
+
+// One row per finished kana Reading session (the user watched all 50
+// cards in a stage). Persisted so daily quests can ask "did you do a
+// Reading session today?" without inferring from coin events. Reading
+// mode is otherwise local-only — this row is the *only* server effect
+// of finishing a session.
+//
+// `sessionKey` is a client-generated UUID minted on session start;
+// the @unique makes retries / accidental double-POSTs no-op idempotent
+// without needing app-level locking.
+model ReadingSession {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  // 1..4, mirrors ReadingWord.stage.
+  stage       Int
+  // 1..5, the dayOfCycle the user actually played (auto-set on
+  // weekdays, manual on weekends).
+  set         Int
+  sessionKey  String   @unique
+  cardsShown  Int
+  durationMs  Int
+  completedAt DateTime @default(now())
+
+  @@index([userId, completedAt])
+}
+
+// One row per finished Muscle Memory drill. The drill component
+// already mints a per-session `drillKey` UUID and POSTs it to
+// /api/study/kana-drill; we promote that key to a unique constraint
+// here so the persisted row + the existing CoinLedger row share the
+// same idempotency contract.
+model KanaDrillSession {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  drillKey    String   @unique
+  total       Int
+  correct     Int
+  completedAt DateTime @default(now())
+
+  @@index([userId, completedAt])
+}
+
+// Per-user "tier" + "focus" classification that drives the
+// progressive daily quest resolver (see src/lib/quest-tier.ts and
+// src/lib/coins.ts:resolveDailyQuests). Recomputed at most once per
+// week per user — `validUntil` is a 7-day rolling TTL after which
+// the next read recomputes.
+//
+// `tier`  — engagement bucket: "starter" | "steady" | "committed" | "power".
+//           Drives quest TARGETS (e.g. "answer 50 questions" → "answer 150").
+// `focus` — content emphasis: "kana" | "kanji" | "vocab" | "balanced".
+//           Drives quest SET rotation (kana focus surfaces Reading +
+//           Muscle Memory quests; kanji focus surfaces a kanji-study
+//           quest; etc.).
+// `signals` is the WeeklyEngagement snapshot used to compute the
+// classification, kept for debugging / future admin tooling.
+// `source` is "ai" when Gemini classified, "rule_fallback" otherwise
+// (Redis bucket exhausted, missing API key, AI error). Keeping both
+// paths working without code changes is the resilience contract.
+model UserQuestTier {
+  userId     String   @id
+  tier       String
+  focus      String
+  signals    Json
+  source     String
+  computedAt DateTime @default(now())
+  validUntil DateTime
+}
